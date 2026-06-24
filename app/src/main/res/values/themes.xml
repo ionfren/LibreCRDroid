@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppCompat base so AppCompatActivity + per-app locales work; the UI itself is Compose
+         (Material 3), so this only supplies the window background before Compose draws. -->
+    <style name="Theme.LibreCR" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">?android:attr/colorBackground</item>
+    </style>
+</resources>

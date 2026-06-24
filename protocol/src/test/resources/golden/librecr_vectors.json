@@ -1,0 +1,466 @@
+{
+  "ccm_libaes_m8" : {
+    "ctTag" : "2be74afb317295bdc5eb664a38780ea660e8660fdb743dd487591762ee7d115657918fc4294fa2abd83c575a",
+    "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+    "nonce" : "010000007500dc",
+    "pt" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223"
+  },
+  "ccm_phase5_m4" : {
+    "ctTag" : "49e3d257fb4fe91267cd1303cfab012ca215375f94040f8e9340a139de69720a88dc15dd50d3931a",
+    "key" : "3b16168843c299ad7fa311ba2440d58a",
+    "nonce" : "210400008f8c4b",
+    "pt" : "8d2f296f882c1c0991d0e38c097892288c5b0b7441a7486d930806db08acdf1e3225ec72"
+  },
+  "ccm_std" : [
+    {
+      "aad" : "0001020304050607",
+      "ctTag" : "7162015b4dac255d",
+      "key" : "404142434445464748494a4b4c4d4e4f",
+      "nonce" : "10111213141516",
+      "pt" : "20212223",
+      "tagLen" : 4
+    },
+    {
+      "aad" : "",
+      "ctTag" : "649082dcb56881719d1b93bdd68e44dfa4c58ae8",
+      "key" : "7c536d2ec3c76c741a776de85596959d",
+      "nonce" : "0100000000000000000000",
+      "pt" : "00112233445566778899aabb",
+      "tagLen" : 8
+    }
+  ],
+  "clinical_parse" : [
+    {
+      "currentGlucoseRaw" : 106,
+      "historicGlucoseRaw" : 101,
+      "lifeCount" : 920,
+      "plaintext" : "98036d006b0069006e006a006500"
+    }
+  ],
+  "crc16" : [
+    {
+      "crc" : "ffff",
+      "data" : ""
+    },
+    {
+      "crc" : "c8bb",
+      "data" : "0102030405"
+    },
+    {
+      "crc" : "2c58",
+      "data" : "deadbeef"
+    },
+    {
+      "crc" : "b50e",
+      "data" : "00112233445566778899aabbccddeeff"
+    }
+  ],
+  "dataplane_decrypt" : [
+    {
+      "channel" : "glucoseData",
+      "frameRaw" : "3c937752c72e2dfdcfe05a5dce315b6f3785f23dbc85066856d60027c5a41f45c90100",
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kindOrdinal" : 3,
+      "plaintext" : "da386700e3ff0000ac26c73871000b670071001a0abf03f33c59100000",
+      "seq" : 1
+    },
+    {
+      "channel" : "patchStatus",
+      "frameRaw" : "4e6fe9573b6365476193e9c42009acd20100",
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kindOrdinal" : 2,
+      "plaintext" : "9d280000e0000704db381607",
+      "seq" : 1
+    },
+    {
+      "channel" : "historicData",
+      "frameRaw" : "4637aa722274876d69a34f20096c49adced70100",
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kindOrdinal" : 4,
+      "plaintext" : "98036d006b0069006e006a006500",
+      "seq" : 1
+    }
+  ],
+  "dataplane_glucose_split" : {
+    "combined" : "3c937752c72e2dfdcfe05a5dce315b6f3785f23dbc85066856d60027c5a41f45c90100",
+    "prefix" : "3c937752c72e2dfdcfe05a5dce315b",
+    "suffix" : "6f3785f23dbc85066856d60027c5a41f45c90100"
+  },
+  "dataplane_nonce" : [
+    {
+      "ivEnc" : "0000000067c72c01",
+      "kEnc" : "4bbce496a63cc9a435adeeb4f78e1617",
+      "kind" : "patchData",
+      "nonce" : "01004400000000000067c72c01",
+      "seq" : 1
+    },
+    {
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kind" : "kind2",
+      "nonce" : "01000000f000000000bcc696a2",
+      "seq" : 1
+    },
+    {
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kind" : "kind3",
+      "nonce" : "0100000f0000000000bcc696a2",
+      "seq" : 1
+    },
+    {
+      "ivEnc" : "00000000bcc696a2",
+      "kEnc" : "7c536d2ec3c76c741a776de85596959d",
+      "kind" : "kind4",
+      "nonce" : "010000f00000000000bcc696a2",
+      "seq" : 1
+    }
+  ],
+  "ecdh" : {
+    "privA" : "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "pubA65" : "04515c3d6eb9e396b904d3feca7f54fdcd0cc1e997bf375dca515ad0a6c3b4035f4536be3a50f318fbf9a5475902a221502bef0d57e08c53b2cc0a56f17d9f9354",
+    "pubB65" : "04ac46d2953dbf5a008416ff406aac929c32a91ed62fd515d17d48282773a1497e2d850f4dfd02b06d69d3fd3592559d217d73ca5670b02fbb692e3cf95c076c37",
+    "shared" : "93eaa46278d41918ee9d0584193a97a2972ca24d4ff50db50c23cd71bdbc65bb"
+  },
+  "ecdsa" : [
+    {
+      "payload" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b",
+      "pub65" : "043042384d557497411c419244267b4a75301f598a94d379f26d6e7dee878d0ce8360c0e0320013e9447205c70082f8f0e796d9de0ee1c71ec5ef2e187e27f446c",
+      "sigRaw" : "8762459f37e4aed4b9079ca04bc6a1060f89f16dbfaccd2006889122136da5bb9e9356c92140a6f470b4226019e3c0da19122d7d9337f1948f814ab73aa0367d",
+      "valid" : true
+    },
+    {
+      "payload" : "010102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b",
+      "pub65" : "043042384d557497411c419244267b4a75301f598a94d379f26d6e7dee878d0ce8360c0e0320013e9447205c70082f8f0e796d9de0ee1c71ec5ef2e187e27f446c",
+      "sigRaw" : "8762459f37e4aed4b9079ca04bc6a1060f89f16dbfaccd2006889122136da5bb9e9356c92140a6f470b4226019e3c0da19122d7d9337f1948f814ab73aa0367d",
+      "valid" : false
+    }
+  ],
+  "framing_notify" : {
+    "fragments" : [
+      "00000102030405060708090a0b0c0d0e0f10111213141516"
+    ],
+    "take" : [
+      {
+        "n" : 23,
+        "out" : "000102030405060708090a0b0c0d0e0f10111213141516"
+      }
+    ]
+  },
+  "framing_write" : [
+    {
+      "chunk" : 18,
+      "frags" : [
+        "000000112233"
+      ],
+      "msg" : "00112233"
+    },
+    {
+      "chunk" : 18,
+      "frags" : [
+        "0000000102030405060708090a0b0c0d0e0f1011",
+        "120012131415161718191a1b1c1d1e1f20212223",
+        "240024252627"
+      ],
+      "msg" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627"
+    },
+    {
+      "chunk" : 18,
+      "frags" : [
+        "0000000102030405060708090a0b0c0d0e0f1011",
+        "120012131415161718191a1b1c1d1e1f20212223",
+        "24002425262728292a2b2c2d2e2f303132333435",
+        "3600363738393a3b3c3d3e3f4041424344454647"
+      ],
+      "msg" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041424344454647"
+    },
+    {
+      "chunk" : 18,
+      "frags" : [
+        "0000000102030405060708090a0b0c0d0e0f1011",
+        "120012131415161718191a1b1c1d1e1f20212223",
+        "24002425262728292a2b2c2d2e2f303132333435",
+        "3600363738393a3b3c3d3e3f4041424344454647",
+        "480048494a4b4c4d4e4f50515253545556575859",
+        "5a005a5b5c5d5e5f606162636465666768696a6b",
+        "6c006c6d6e6f707172737475767778797a7b7c7d",
+        "7e007e7f808182838485868788898a8b8c8d8e8f",
+        "9000909192939495969798999a9b9c9d9e9fa0a1"
+      ],
+      "msg" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1"
+    }
+  ],
+  "glucose_parse" : [
+    {
+      "actionableStatus" : 1,
+      "currentGlucoseMgDL" : 103,
+      "fastData" : "bf03f33c59100000",
+      "historicalLifeCount" : 14535,
+      "historicalReading" : 113,
+      "lifeCount" : 14554,
+      "plaintext" : "da386700e3ff0000ac26c73871000b670071001a0abf03f33c59100000",
+      "rateOfChangeRaw" : -29,
+      "readingMgDL" : 103,
+      "temperature" : 2586,
+      "trendRaw" : 3,
+      "uncappedCurrentMgDL" : 103
+    },
+    {
+      "actionableStatus" : 1,
+      "currentGlucoseMgDL" : 98,
+      "fastData" : "9e03113d03100000",
+      "historicalLifeCount" : 14545,
+      "historicalReading" : 108,
+      "lifeCount" : 14563,
+      "plaintext" : "e3386200d6ff0000f023d1386c000b62006c00200a9e03113d03100000",
+      "rateOfChangeRaw" : -42,
+      "readingMgDL" : 98,
+      "temperature" : 2592,
+      "trendRaw" : 3,
+      "uncappedCurrentMgDL" : 98
+    },
+    {
+      "actionableStatus" : 1,
+      "currentGlucoseMgDL" : 97,
+      "fastData" : "9403053d12100000",
+      "historicalLifeCount" : 14545,
+      "historicalReading" : 108,
+      "lifeCount" : 14565,
+      "plaintext" : "e5386100d9ff00008c23d1386c000b61006c001e0a9403053d12100000",
+      "rateOfChangeRaw" : -39,
+      "readingMgDL" : 97,
+      "temperature" : 2590,
+      "trendRaw" : 3,
+      "uncappedCurrentMgDL" : 97
+    }
+  ],
+  "historical_parse" : [
+    {
+      "plaintext" : "98036d006b0069006e006a006500",
+      "startLifeCount" : 920,
+      "values" : [
+        109,
+        107,
+        105,
+        110,
+        106,
+        101
+      ]
+    },
+    {
+      "plaintext" : "8e0369006b006d006b0069006e00",
+      "startLifeCount" : 910,
+      "values" : [
+        105,
+        107,
+        109,
+        107,
+        105,
+        110
+      ]
+    }
+  ],
+  "libaes_block" : [
+    {
+      "ct" : "bf7a0358dc26e61faeb3d310b30f0826",
+      "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+      "pt" : "00000000000000000000000000000000"
+    },
+    {
+      "ct" : "d388d17cc37abcfa3354656979c5ac77",
+      "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+      "pt" : "000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "ct" : "ef66b86917499e796a66a9edf2b6f8d2",
+      "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+      "pt" : "db94448c6abde8bc183df11cf5cf197f"
+    },
+    {
+      "ct" : "a87e6d65ec16f3669541ccebbb585758",
+      "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+      "pt" : "ffffffffffffffffffffffffffffffff"
+    },
+    {
+      "ct" : "2c534187108ce4af212a12cfc4cf52fb",
+      "key" : "3bb02ee4fdefe1737312a4668e7f8604",
+      "pt" : "101112131415161718191a1b1c1d1e1f"
+    }
+  ],
+  "libaes_phase5_block" : [
+    {
+      "ct" : "6b9bddb402786cba9adac3304b86028b",
+      "key" : "00000000000000000000000000000000",
+      "pt" : "00000000000000000000000000000000"
+    },
+    {
+      "ct" : "aa4454e26d649350498357b4ce2596ed",
+      "key" : "000102030405060708090a0b0c0d0e0f",
+      "pt" : "000102030405060708090a0b0c0d0e0f"
+    },
+    {
+      "ct" : "c4ccfb387363f51bf61df08fc6d39304",
+      "key" : "3b16168843c299ad7fa311ba2440d58a",
+      "pt" : "07210400008f8c4b0000000000000001"
+    }
+  ],
+  "nfc_command" : [
+    {
+      "code" : "a0",
+      "out" : "02a07a00f1536578563412eda0",
+      "receiver" : 305419896,
+      "time" : 1700000000
+    },
+    {
+      "code" : "a8",
+      "out" : "02a87a00f1536578563412eda0",
+      "receiver" : 305419896,
+      "time" : 1700000000
+    }
+  ],
+  "nfc_metcrc" : [
+    {
+      "out" : "00000000000000003e31",
+      "receiver" : 0,
+      "time" : 0
+    },
+    {
+      "out" : "00f1536578563412eda0",
+      "receiver" : 305419896,
+      "time" : 1700000000
+    },
+    {
+      "out" : "2a000000efbeadde0a8f",
+      "receiver" : 3735928559,
+      "time" : 42
+    }
+  ],
+  "patchcontrol" : [
+    {
+      "label" : "historic >= 5",
+      "plaintext" : "01000105000000"
+    },
+    {
+      "label" : "clinical >= 1",
+      "plaintext" : "01010101000000"
+    },
+    {
+      "label" : "historic >= 907",
+      "plaintext" : "0100018b030000"
+    },
+    {
+      "label" : "event log >= 1",
+      "plaintext" : "04010000000000"
+    },
+    {
+      "label" : "factory data",
+      "plaintext" : "06000000000000"
+    },
+    {
+      "label" : "shutdown patch",
+      "plaintext" : "05000000000000"
+    }
+  ],
+  "patchstatus_parse" : [
+    {
+      "appDisconnectReason" : 7,
+      "currentLifeCount" : 14555,
+      "errorData" : 0,
+      "eventData" : 4224,
+      "index" : 7,
+      "lifeCount" : 10397,
+      "patchState" : 4,
+      "plaintext" : "9d280000e0000704db381607",
+      "stackDisconnectReason" : 22
+    },
+    {
+      "appDisconnectReason" : 0,
+      "currentLifeCount" : 14564,
+      "errorData" : 0,
+      "eventData" : 4224,
+      "index" : 7,
+      "lifeCount" : 10397,
+      "patchState" : 4,
+      "plaintext" : "9d280000e0000704e4381300",
+      "stackDisconnectReason" : 19
+    },
+    {
+      "appDisconnectReason" : 0,
+      "currentLifeCount" : 12,
+      "errorData" : 0,
+      "eventData" : 4000,
+      "index" : 0,
+      "lifeCount" : 12,
+      "patchState" : 4,
+      "plaintext" : "0c000000000000040c000000",
+      "stackDisconnectReason" : 0
+    }
+  ],
+  "phase5_challenge" : [
+    {
+      "logical" : "49e3d257fb4fe91267cd1303cfab012ca215375f94040f8e9340a139de69720a88dc15dd50d3931a",
+      "nonce" : "210400008f8c4b",
+      "r1" : "8d2f296f882c1c0991d0e38c09789228",
+      "r2" : "8c5b0b7441a7486d930806db08acdf1e",
+      "rawKey" : "3b16168843c299ad7fa311ba2440d58a",
+      "tail4" : "3225ec72"
+    }
+  ],
+  "phase5_keysched" : [
+    {
+      "input66" : "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "rawKey" : "4facb8db3692f2714ebaea5f9ff22de6"
+    },
+    {
+      "input66" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f4041",
+      "rawKey" : "56120a7e63561935008ef24e76f45d2a"
+    },
+    {
+      "input66" : "050404000106040200060403000402060006030600010305070302070500030500020605020406000607050606000507060103030207040705040406030200060507",
+      "rawKey" : "3b16168843c299ad7fa311ba2440d58a"
+    },
+    {
+      "input66" : "070705010506010205030100000305050600030300060304010205050201050606000407010102020704030606050705010404060101060507010404000200000204",
+      "rawKey" : "3e2199e34b872cec7ea8b621542c77ff"
+    }
+  ],
+  "phase6" : [
+    {
+      "ivEnc" : "0000000067c72c01",
+      "kEnc" : "4bbce496a63cc9a435adeeb4f78e1617",
+      "nonce" : "35040000a4e148",
+      "r1" : "544921efc2c2bcd4a9d0b119d3a923e0",
+      "r2" : "9db1cc3f06e9d092d6602bdc5c7ad312",
+      "rawKey" : "f84d8c0f6251e81f46ff263343239fb9",
+      "tag" : "1bef3995",
+      "wire" : "85aa09d24bfcd0cddc7984d10e7451b34595c5ab3947106858d729a947ee2f372a2403d9e72834a82f870f16b415afa032654b1572c848361bef399535040000a4e148"
+    },
+    {
+      "ivEnc" : "00000000faaa2dda",
+      "kEnc" : "9f15acd6f2584a911429b45060276617",
+      "nonce" : "08000000f38356",
+      "r1" : "d02d410e6ef40e76e36abf7455dcc432",
+      "r2" : "6fdddbd344b7379a581a856e31c01d25",
+      "rawKey" : "21b5cd0e7ab84d60f5d7453a6e2ddf40",
+      "tag" : "619540f2",
+      "wire" : "c7abf31874dc02e9f775b8ef83906a35632c998ca6c34ca81d4410c0a062d18ac0c8859e92a38c1c7521198de87394b2086b4e458cf7fe81619540f208000000f38356"
+    }
+  ],
+  "receiver_accountless" : [
+    {
+      "id" : "ABCDEF0123456789",
+      "value" : 849343474
+    },
+    {
+      "id" : "iPhone15,2",
+      "value" : 2832938831
+    },
+    {
+      "id" : "",
+      "value" : 0
+    }
+  ]
+}

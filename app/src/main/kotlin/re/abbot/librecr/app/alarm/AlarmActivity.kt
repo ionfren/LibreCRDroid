@@ -1,0 +1,168 @@
+package re.abbot.librecr.app.alarm
+
+import android.media.AudioAttributes
+import android.media.Ringtone
+import android.media.RingtoneManager
+import android.os.Build
+import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import re.abbot.librecr.app.ui.theme.LibreCRTheme
+
+/** Full-screen, lock-screen-visible glucose alarm with Snooze / Stop. */
+class AlarmActivity : ComponentActivity() {
+    private var ringtone: Ringtone? = null
+    private var vibrator: Vibrator? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        showOverLockScreen()
+
+        val kind = runCatching {
+            AlarmKind.valueOf(intent.getStringExtra(GlucoseAlarmManager.EXTRA_KIND) ?: "")
+        }.getOrNull()
+        if (kind == null) {
+            finish()
+            return
+        }
+        val mgDl = intent.getIntExtra(GlucoseAlarmManager.EXTRA_MGDL, 0)
+        val snoozeMin = intent.getIntExtra(GlucoseAlarmManager.EXTRA_SNOOZE_MIN, 30)
+        startFeedback()
+
+        setContent {
+            LibreCRTheme(dynamicColor = false) {
+                AlarmScreen(
+                    kind = kind,
+                    mgDl = mgDl,
+                    snoozeMinutes = snoozeMin,
+                    onSnooze = {
+                        stopFeedback()
+                        GlucoseAlarmManager.snooze(this, kind, snoozeMin)
+                        finish()
+                    },
+                    onStop = {
+                        stopFeedback()
+                        GlucoseAlarmManager.stop(this, kind)
+                        finish()
+                    },
+                )
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        stopFeedback()
+        super.onDestroy()
+    }
+
+    private fun showOverLockScreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+    }
+
+    private fun startFeedback() {
+        runCatching {
+            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ringtone = RingtoneManager.getRingtone(this, uri)?.apply {
+                audioAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) isLooping = true
+                play()
+            }
+        }
+        runCatching {
+            vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(VIBRATOR_SERVICE) as Vibrator
+            }
+            vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 600, 400), 0))
+        }
+    }
+
+    private fun stopFeedback() {
+        runCatching { ringtone?.stop() }
+        runCatching { vibrator?.cancel() }
+        ringtone = null
+        vibrator = null
+    }
+}
+
+@Composable
+private fun AlarmScreen(
+    kind: AlarmKind,
+    mgDl: Int,
+    snoozeMinutes: Int,
+    onSnooze: () -> Unit,
+    onStop: () -> Unit,
+) {
+    val accent = when (kind) {
+        AlarmKind.URGENT_LOW -> Color(0xFFD32F2F)
+        AlarmKind.LOW, AlarmKind.PERSISTENT_LOW -> Color(0xFFF4511E)
+        AlarmKind.HIGH, AlarmKind.PERSISTENT_HIGH -> Color(0xFFF9A825)
+    }
+    val title = when (kind) {
+        AlarmKind.URGENT_LOW -> "Glicemie foarte scăzută"
+        AlarmKind.LOW -> "Glicemie scăzută"
+        AlarmKind.HIGH -> "Glicemie ridicată"
+        AlarmKind.PERSISTENT_HIGH -> "Glicemie ridicată persistent"
+        AlarmKind.PERSISTENT_LOW -> "Glicemie scăzută persistent"
+    }
+    Surface(Modifier.fillMaxSize(), color = accent.copy(alpha = 0.12f)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(28.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = accent)
+            Text("$mgDl", fontSize = 132.sp, fontWeight = FontWeight.Bold, color = accent)
+            Text("mg/dL", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.size(48.dp))
+            Button(
+                onClick = onSnooze,
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accent),
+            ) {
+                Text("Amână ${snoozeMinutes} min", fontSize = 20.sp)
+            }
+            Spacer(Modifier.size(14.dp))
+            OutlinedButton(
+                onClick = onStop,
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+            ) {
+                Text("Oprește", fontSize = 20.sp)
+            }
+        }
+    }
+}

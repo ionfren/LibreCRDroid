@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LibreCRDroid</string>
+    <string name="aod_accessibility_description">Afișează glicemia pe ecranul blocat și pe Always On Display.</string>
+
+    <!-- Navigation + screen titles -->
+    <string name="nav_home">Acasă</string>
+    <string name="nav_stats">Statistici</string>
+    <string name="nav_settings">Setări</string>
+    <string name="title_app">LibreCR</string>
+    <string name="title_sensor">Conectare senzor</string>
+    <string name="title_alarms">Alarme</string>
+    <string name="title_floating">Glucoză flotantă</string>
+    <string name="title_aod">Always-On Display</string>
+    <string name="title_wear_os">Wear OS</string>
+    <string name="title_wear_appearance">Aspect și complicații</string>
+    <string name="title_units">Unități și țintă</string>
+    <string name="title_language">Limbă</string>
+    <string name="title_log">Log</string>
+    <string name="common_back">Înapoi</string>
+    <string name="common_done">Gata</string>
+
+    <!-- Home -->
+    <string name="home_chart">Grafic</string>
+    <string name="home_connection">Conexiune</string>
+    <string name="range_in">în țintă</string>
+    <string name="range_low">sub țintă</string>
+    <string name="range_high">peste țintă</string>
+    <string name="range_none">fără citire</string>
+    <string name="trend_falling_quickly">scade rapid</string>
+    <string name="trend_falling">scade</string>
+    <string name="trend_stable">stabil</string>
+    <string name="trend_rising">crește</string>
+    <string name="trend_rising_quickly">crește rapid</string>
+    <string name="trend_unknown">trend necunoscut</string>
+    <string name="age_no_reading">încă nu există citire</string>
+    <string name="age_now">acum</string>
+    <string name="age_seconds">acum %1$ds</string>
+    <string name="age_minutes">acum %1$d min</string>
+    <string name="age_hours">acum %1$d h</string>
+    <string name="status_idle">gata</string>
+    <string name="status_scanning">caut senzorul</string>
+    <string name="status_connecting">conectare</string>
+    <string name="status_handshaking">autorizare BLE</string>
+    <string name="status_streaming">live</string>
+    <string name="status_reconnecting">reconectare</string>
+    <string name="status_error">eroare</string>
+    <string name="chart_no_data">Nu există încă date pentru grafic.</string>
+    <string name="standby_mode">Standby</string>
+    <string name="standby_charging">la încărcat</string>
+    <string name="standby_no_reading">fără citire</string>
+    <string name="standby_title">Standby roșu</string>
+    <string name="standby_enable">Activează standby roșu</string>
+    <string name="standby_desc">Când telefonul este în landscape, la încărcat și în intervalul orar setat, afișează un ceas mare, glicemia și trendul pe fundal roșu/negru. Ecranul rămâne aprins și conținutul se mută foarte discret pentru protecție anti burn-in.</string>
+    <string name="standby_hours_desc">Standby pornește doar între orele de mai sus. Intervalele peste miezul nopții sunt acceptate.</string>
+    <string name="sensor_section">Senzor</string>
+    <string name="sensor_waiting_status">Aștept primul status de la senzor pentru a calcula durata rămasă.</string>
+    <string name="sensor_warmup">Încălzire</string>
+    <string name="sensor_wear_duration">Durata senzorului</string>
+    <string name="sensor_warmup_remaining">%1$s rămase</string>
+    <string name="sensor_duration_unavailable">durată indisponibilă</string>
+    <string name="sensor_expired">expirat</string>
+    <string name="sensor_until_finish">%1$s până la terminare</string>
+    <string name="sensor_lifetime">Timp de viață: %1$s</string>
+    <string name="duration_days_hours">%1$dz %2$dh</string>
+    <string name="duration_days">%1$dz</string>
+    <string name="duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="duration_hours">%1$dh</string>
+    <string name="duration_minutes">%1$dm</string>
+
+    <!-- Statistics -->
+    <string name="period_today">Azi</string>
+    <string name="period_7d">7 zile</string>
+    <string name="period_14d">14 zile</string>
+    <string name="period_30d">30 zile</string>
+    <string name="period_90d">90 zile</string>
+    <string name="period_today_short">Azi</string>
+    <string name="period_7d_short">7z</string>
+    <string name="period_14d_short">14z</string>
+    <string name="period_30d_short">30z</string>
+    <string name="period_90d_short">90z</string>
+    <string name="stats_loading">Se calculează statisticile…</string>
+    <string name="stats_empty_title">Încă nu sunt date</string>
+    <string name="stats_readings_coverage">%1$d citiri · %2$s</string>
+    <string name="stats_target_compact">Țintă %1$s–%2$s %3$s</string>
+    <string name="stats_tir_short">TIR</string>
+    <string name="stats_gmi_short">GMI</string>
+    <string name="stats_details_title">Detalii</string>
+    <string name="stats_patterns_title">Tipare</string>
+    <string name="stats_agp_tab">AGP</string>
+    <string name="stats_daily_tab">Zilnic</string>
+    <string name="stats_none">Nu există încă date pentru această perioadă. Statisticile se acumulează pe măsură ce senzorul transmite.</string>
+    <string name="stats_gmi_title">Indicator de management (GMI)</string>
+    <string name="stats_gmi_desc">Estimează HbA1c din glicemia medie pe perioadă.</string>
+    <string name="stats_tir_title">Timp în interval</string>
+    <string name="tir_very_high">Foarte ridicat</string>
+    <string name="tir_high">Ridicat</string>
+    <string name="tir_in_range">În țintă</string>
+    <string name="tir_low">Scăzut</string>
+    <string name="tir_very_low">Foarte scăzut</string>
+    <string name="stats_summary">Rezumat</string>
+    <string name="stat_mean">Medie</string>
+    <string name="stat_cv">Variabilitate (CV)</string>
+    <string name="stat_sd">Deviație standard</string>
+    <string name="stat_a1c">A1c estimat</string>
+    <string name="stat_minmax">Minim / maxim</string>
+    <string name="stat_count">Citiri</string>
+    <string name="stat_span">Interval acoperit</string>
+    <string name="span_days">%1$d zile</string>
+    <string name="span_hours">%1$d h</string>
+
+    <!-- Settings hub -->
+    <string name="set_sensor_s">BLE, NFC, recuperare, Wear OS</string>
+    <string name="set_alarms_s">Praguri, amânare, ore active</string>
+    <string name="set_floating_s">Bulă peste aplicații</string>
+    <string name="set_aod_s">Ecran blocat / AOD</string>
+    <string name="set_wear_appearance_s">Aspect ceas, culori și complicații</string>
+    <string name="set_units_s">mg/dL sau mmol/L, interval țintă</string>
+    <string name="set_language_s">Română, English, Français</string>
+    <string name="set_log_s">Jurnal de diagnostic</string>
+
+    <!-- Wear appearance -->
+    <string name="wear_appearance_preview">Previzualizare</string>
+    <string name="wear_appearance_font_weight">Grosimea fontului</string>
+    <string name="wear_appearance_glucose_value_color">Culoarea valorii glucozei</string>
+    <string name="wear_appearance_trend_arrow_color">Culoarea săgeții de trend</string>
+    <string name="wear_appearance_timestamp_color">Culoarea timestamp-ului</string>
+    <string name="wear_appearance_delta_color">Culoarea deltei</string>
+    <string name="wear_appearance_low_glucose">Glicemie scăzută</string>
+    <string name="wear_appearance_in_range_glucose">Glicemie în interval</string>
+    <string name="wear_appearance_high_glucose">Glicemie ridicată</string>
+    <string name="wear_appearance_timestamp_normal">Timestamp normal</string>
+    <string name="wear_appearance_timestamp_stale">Timestamp vechi/fără citire recentă</string>
+    <string name="wear_appearance_delta_normal">Delta normală</string>
+    <string name="wear_appearance_delta_low">Delta la glicemie scăzută</string>
+    <string name="wear_appearance_delta_high">Delta la glicemie ridicată</string>
+    <string name="wear_preview_low">Scăzută</string>
+    <string name="wear_preview_in_range">În interval</string>
+    <string name="wear_preview_high">Ridicată</string>
+    <string name="wear_preview_stale">Citire veche</string>
+
+    <!-- Units -->
+    <string name="units_unit_title">Unitate de măsură</string>
+    <string name="units_unit_desc">Valorile sunt stocate intern în mg/dL; aici se schimbă doar afișarea.</string>
+    <string name="units_target_title">Interval țintă</string>
+    <string name="units_low">Limita de jos</string>
+    <string name="units_high">Limita de sus</string>
+    <string name="units_target_desc">Intervalul țintă colorează graficul și statisticile Time-in-Range.</string>
+
+    <!-- Language -->
+    <string name="lang_system">Limba sistemului</string>
+    <string name="lang_desc">Schimbarea limbii reîncarcă interfața.</string>
+
+    <!-- Alarms -->
+    <string name="alarms_enable">Activează alarmele</string>
+    <string name="alarms_desc">Pragurile sunt verificate la fiecare citire a senzorului.</string>
+    <string name="alarms_low_section">Glicemie scăzută</string>
+    <string name="alarms_low">Alarmă jos</string>
+    <string name="alarms_low_th">Prag jos</string>
+    <string name="alarms_urgent">Alarmă urgentă jos</string>
+    <string name="alarms_urgent_th">Prag urgent (ignoră orele active)</string>
+    <string name="alarms_high_section">Glicemie ridicată</string>
+    <string name="alarms_high">Alarmă sus</string>
+    <string name="alarms_high_th">Prag sus</string>
+    <string name="alarms_snooze_section">Amânare</string>
+    <string name="alarms_snooze">Reamintire după %1$d min</string>
+    <string name="alarms_hours_section">Ore active</string>
+    <string name="alarms_hours_enable">Doar în anumite ore</string>
+    <string name="alarms_start">Început</string>
+    <string name="alarms_end">Sfârșit</string>
+    <string name="alarms_hours_desc">Alarma urgentă de jos sună oricum, inclusiv în afara orelor active.</string>
+    <string name="alarms_test_section">Test</string>
+    <string name="alarms_test">Testează alarma pe ecran complet</string>
+    <string name="alarms_persistent_section">Alarme persistente</string>
+    <string name="alarms_persistent_high">Ridicat persistent</string>
+    <string name="alarms_persistent_high_th">Prag ridicat</string>
+    <string name="alarms_persistent_high_dur">Durată</string>
+    <string name="alarms_persistent_low">Scăzut persistent</string>
+    <string name="alarms_persistent_low_th">Prag scăzut</string>
+    <string name="alarms_persistent_low_dur">Durată</string>
+    <string name="alarms_persistent_desc">Sună doar dacă glicemia rămâne peste/sub prag pe toată durata setată.</string>
+
+    <!-- Log -->
+    <string name="log_clear">Șterge</string>
+    <string name="log_stop">Oprește</string>
+    <string name="log_start">Pornește</string>
+
+    <!-- Recent history + CSV import -->
+    <string name="home_recent">Istoric recent</string>
+    <string name="home_recent_empty">Încă nu există citiri stocate.</string>
+    <string name="stats_import">Importă fișier (CSV)</string>
+    <string name="stats_importing">Se importă…</string>
+    <string name="stats_import_done">%1$d valori importate</string>
+    <string name="stats_import_error">Eroare la import: %1$s</string>
+
+    <!-- Cloud / LibreView upload -->
+    <string name="title_cloud">Cloud / LibreView</string>
+    <string name="set_cloud_s">Trimite citirile la LibreView/LibreLinkUp</string>
+    <string name="cloud_enable">Trimite în cloud</string>
+    <string name="cloud_email">Email LibreView</string>
+    <string name="cloud_password">Parolă LibreView</string>
+    <string name="cloud_test">Testează acum</string>
+    <string name="cloud_testing">Se trimite…</string>
+    <string name="cloud_test_ok">Trimis cu succes.</string>
+    <string name="cloud_warning">Atenție: rularea simultană cu aplicația oficială LibreLink pe același cont poate genera conflicte. Login-uri greșite pot bloca temporar contul.</string>
+    <string name="cloud_status_uploading">Se trimite…</string>
+    <string name="cloud_status_ok">Ultima trimitere: %1$s (%2$d mg/dL)</string>
+    <string name="cloud_status_error">Eroare: %1$s</string>
+
+    <!-- Statistics: AGP (Ambulatory Glucose Profile) -->
+    <string name="stats_agp_title">Profil glicemic (AGP)</string>
+    <string name="stats_agp_desc">Mediana și percentilele pe 24 h, toate zilele suprapuse. Țintă %1$s–%2$s %3$s.</string>
+    <string name="stats_agp_legend_median">Mediană</string>
+    <string name="stats_agp_legend_iqr">25–75%</string>
+    <string name="stats_agp_legend_p10_90">10–90%</string>
+    <!-- Statistics: summary additions -->
+    <string name="stat_median">Mediană</string>
+    <string name="stat_iqr">Interval 25–75%</string>
+    <!-- Statistics: daily trend -->
+    <string name="stats_daily_title">Tendință zilnică</string>
+    <string name="stats_daily_desc">Timp în țintă pe zi. Medie %1$d%%.</string>
+    <!-- Statistics: variability (GVI + PGS) -->
+    <string name="stats_variability_title">Variabilitate</string>
+    <string name="stat_gvi">Indice de variabilitate (GVI)</string>
+    <string name="stat_stability">Stabilitate</string>
+    <string name="stat_pgs">Stare glicemică (PGS)</string>
+    <string name="gvi_excellent">Excelentă</string>
+    <string name="gvi_good">Bună</string>
+    <string name="gvi_moderate">Moderată</string>
+    <string name="gvi_poor">Slabă</string>
+    <string name="pgs_low">Scăzută</string>
+    <string name="pgs_elevated">Ridicată</string>
+    <string name="pgs_unstable">Instabilă</string>
+    <string name="pgs_stable">Stabilă</string>
+    <!-- Statistics: insights -->
+    <string name="stats_insights_title">Observații</string>
+    <string name="insight_excellent_control">Control excelent</string>
+    <string name="insight_excellent_control_desc">%1$d%% din timp în țintă. Continuă așa!</string>
+    <string name="insight_good_progress">Progres bun</string>
+    <string name="insight_good_progress_desc">%1$d%% în țintă. Aproape de obiectiv.</string>
+    <string name="insight_room_improvement">Loc de îmbunătățire</string>
+    <string name="insight_room_improvement_desc">%1$d%% în țintă. Țintește spre 70%%.</string>
+    <string name="insight_stable_glucose">Glicemie stabilă</string>
+    <string name="insight_stable_glucose_desc">Variabilitate %1$d%% (CV ≤ 36%%).</string>
+    <string name="insight_variability_rising">Variabilitate în creștere</string>
+    <string name="insight_variability_rising_desc">CV %1$.1f%%. Urmărește mesele și dozele.</string>
+    <string name="insight_high_variability">Variabilitate ridicată</string>
+    <string name="insight_high_variability_desc">CV %1$d%%. Fluctuații mari ale glicemiei.</string>
+    <string name="insight_hypo_exposure">Expunere la hipoglicemie</string>
+    <string name="insight_hypo_exposure_desc">%1$.1f%% din timp sub 54. Revizuiește pragurile.</string>
+    <string name="insight_prolonged_hyper">Hiperglicemie prelungită</string>
+    <string name="insight_prolonged_hyper_desc">%1$.1f%% din timp peste pragul ridicat.</string>
+    <string name="insight_overnight_drift">Creștere nocturnă</string>
+    <string name="insight_overnight_drift_desc">Glicemia e mai ridicată noaptea decât ziua.</string>
+    <string name="insight_unstable_days">Zile instabile</string>
+    <string name="insight_unstable_days_desc">%1$d zile sub 50%% în țintă.</string>
+    <string name="insight_a1c_estimate">HbA1c estimat ridicat</string>
+    <string name="insight_a1c_estimate_desc">GMI %1$.1f%%. Discută cu medicul.</string>
+</resources>

@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="aod_accessibility_description">Shows glucose on the lock screen and Always-On Display.</string>
+
+    <!-- Navigation + screen titles -->
+    <string name="nav_home">Home</string>
+    <string name="nav_stats">Statistics</string>
+    <string name="nav_settings">Settings</string>
+    <string name="title_app">LibreCR</string>
+    <string name="title_sensor">Sensor connection</string>
+    <string name="title_alarms">Alarms</string>
+    <string name="title_floating">Floating glucose</string>
+    <string name="title_aod">Always-On Display</string>
+    <string name="title_wear_os">Wear OS</string>
+    <string name="title_wear_appearance">Appearance &amp; Complications</string>
+    <string name="title_units">Units &amp; target</string>
+    <string name="title_language">Language</string>
+    <string name="title_log">Log</string>
+    <string name="common_back">Back</string>
+    <string name="common_done">Done</string>
+
+    <!-- Home -->
+    <string name="home_chart">Chart</string>
+    <string name="home_connection">Connection</string>
+    <string name="range_in">in range</string>
+    <string name="range_low">below target</string>
+    <string name="range_high">above target</string>
+    <string name="range_none">no reading</string>
+    <string name="trend_falling_quickly">falling fast</string>
+    <string name="trend_falling">falling</string>
+    <string name="trend_stable">stable</string>
+    <string name="trend_rising">rising</string>
+    <string name="trend_rising_quickly">rising fast</string>
+    <string name="trend_unknown">unknown trend</string>
+    <string name="age_no_reading">no reading yet</string>
+    <string name="age_now">now</string>
+    <string name="age_seconds">%1$ds ago</string>
+    <string name="age_minutes">%1$d min ago</string>
+    <string name="age_hours">%1$d h ago</string>
+    <string name="status_idle">ready</string>
+    <string name="status_scanning">scanning for sensor</string>
+    <string name="status_connecting">connecting</string>
+    <string name="status_handshaking">BLE authorization</string>
+    <string name="status_streaming">live</string>
+    <string name="status_reconnecting">reconnecting</string>
+    <string name="status_error">error</string>
+    <string name="chart_no_data">No chart data yet.</string>
+    <string name="standby_mode">Standby</string>
+    <string name="standby_charging">charging</string>
+    <string name="standby_no_reading">no reading</string>
+    <string name="standby_title">Red Standby</string>
+    <string name="standby_enable">Enable Red Standby</string>
+    <string name="standby_desc">When the phone is landscape, charging, and inside the configured time window, show a large clock, glucose and trend on a red/black background. The screen stays on and the content shifts very subtly for burn-in protection.</string>
+    <string name="standby_hours_desc">Standby starts only between the times above. Windows crossing midnight are supported.</string>
+    <string name="sensor_section">Sensor</string>
+    <string name="sensor_waiting_status">Waiting for the first sensor status to calculate the remaining time.</string>
+    <string name="sensor_warmup">Warmup</string>
+    <string name="sensor_wear_duration">Sensor duration</string>
+    <string name="sensor_warmup_remaining">%1$s remaining</string>
+    <string name="sensor_duration_unavailable">duration unavailable</string>
+    <string name="sensor_expired">expired</string>
+    <string name="sensor_until_finish">%1$s until finish</string>
+    <string name="sensor_lifetime">Lifetime: %1$s</string>
+    <string name="duration_days_hours">%1$dd %2$dh</string>
+    <string name="duration_days">%1$dd</string>
+    <string name="duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="duration_hours">%1$dh</string>
+    <string name="duration_minutes">%1$dm</string>
+
+    <!-- Statistics -->
+    <string name="period_today">Today</string>
+    <string name="period_7d">7 days</string>
+    <string name="period_14d">14 days</string>
+    <string name="period_30d">30 days</string>
+    <string name="period_90d">90 days</string>
+    <string name="period_today_short">Today</string>
+    <string name="period_7d_short">7d</string>
+    <string name="period_14d_short">14d</string>
+    <string name="period_30d_short">30d</string>
+    <string name="period_90d_short">90d</string>
+    <string name="stats_loading">Calculating statistics…</string>
+    <string name="stats_empty_title">No data yet</string>
+    <string name="stats_readings_coverage">%1$d readings · %2$s</string>
+    <string name="stats_target_compact">Target %1$s–%2$s %3$s</string>
+    <string name="stats_tir_short">TIR</string>
+    <string name="stats_gmi_short">GMI</string>
+    <string name="stats_details_title">Details</string>
+    <string name="stats_patterns_title">Patterns</string>
+    <string name="stats_agp_tab">AGP</string>
+    <string name="stats_daily_tab">Daily</string>
+    <string name="stats_none">No data for this period yet. Statistics build up as the sensor streams.</string>
+    <string name="stats_gmi_title">Glucose Management Indicator (GMI)</string>
+    <string name="stats_gmi_desc">Estimates HbA1c from the average glucose over the period.</string>
+    <string name="stats_tir_title">Time in range</string>
+    <string name="tir_very_high">Very high</string>
+    <string name="tir_high">High</string>
+    <string name="tir_in_range">In range</string>
+    <string name="tir_low">Low</string>
+    <string name="tir_very_low">Very low</string>
+    <string name="stats_summary">Summary</string>
+    <string name="stat_mean">Average</string>
+    <string name="stat_cv">Variability (CV)</string>
+    <string name="stat_sd">Standard deviation</string>
+    <string name="stat_a1c">Estimated A1c</string>
+    <string name="stat_minmax">Min / max</string>
+    <string name="stat_count">Readings</string>
+    <string name="stat_span">Coverage</string>
+    <string name="span_days">%1$d days</string>
+    <string name="span_hours">%1$d h</string>
+
+    <!-- Settings hub -->
+    <string name="set_sensor_s">BLE, NFC, recovery, Wear OS</string>
+    <string name="set_alarms_s">Thresholds, snooze, active hours</string>
+    <string name="set_floating_s">Bubble over apps</string>
+    <string name="set_aod_s">Lock screen / AOD</string>
+    <string name="set_wear_appearance_s">Watch appearance, colors, and complications</string>
+    <string name="set_units_s">mg/dL or mmol/L, target range</string>
+    <string name="set_language_s">Română, English, Français</string>
+    <string name="set_log_s">Diagnostic log</string>
+
+    <!-- Wear appearance -->
+    <string name="wear_appearance_preview">Preview</string>
+    <string name="wear_appearance_font_weight">Font weight</string>
+    <string name="wear_appearance_glucose_value_color">Glucose value color</string>
+    <string name="wear_appearance_trend_arrow_color">Trend arrow color</string>
+    <string name="wear_appearance_timestamp_color">Timestamp color</string>
+    <string name="wear_appearance_delta_color">Delta color</string>
+    <string name="wear_appearance_low_glucose">Low glucose</string>
+    <string name="wear_appearance_in_range_glucose">In range glucose</string>
+    <string name="wear_appearance_high_glucose">High glucose</string>
+    <string name="wear_appearance_timestamp_normal">Normal timestamp</string>
+    <string name="wear_appearance_timestamp_stale">Stale/no recent reading timestamp</string>
+    <string name="wear_appearance_delta_normal">Normal delta</string>
+    <string name="wear_appearance_delta_low">Delta for low glucose</string>
+    <string name="wear_appearance_delta_high">Delta for high glucose</string>
+    <string name="wear_preview_low">Low</string>
+    <string name="wear_preview_in_range">In range</string>
+    <string name="wear_preview_high">High</string>
+    <string name="wear_preview_stale">Stale</string>
+
+    <!-- Units -->
+    <string name="units_unit_title">Unit</string>
+    <string name="units_unit_desc">Values are stored internally in mg/dL; this only changes the display.</string>
+    <string name="units_target_title">Target range</string>
+    <string name="units_low">Lower limit</string>
+    <string name="units_high">Upper limit</string>
+    <string name="units_target_desc">The target range colors the chart and the Time-in-Range statistics.</string>
+
+    <!-- Language -->
+    <string name="lang_system">System language</string>
+    <string name="lang_desc">Changing the language reloads the interface.</string>
+
+    <!-- Alarms -->
+    <string name="alarms_enable">Enable alarms</string>
+    <string name="alarms_desc">Thresholds are checked on every sensor reading.</string>
+    <string name="alarms_low_section">Low glucose</string>
+    <string name="alarms_low">Low alarm</string>
+    <string name="alarms_low_th">Low threshold</string>
+    <string name="alarms_urgent">Urgent low alarm</string>
+    <string name="alarms_urgent_th">Urgent threshold (ignores active hours)</string>
+    <string name="alarms_high_section">High glucose</string>
+    <string name="alarms_high">High alarm</string>
+    <string name="alarms_high_th">High threshold</string>
+    <string name="alarms_snooze_section">Snooze</string>
+    <string name="alarms_snooze">Remind after %1$d min</string>
+    <string name="alarms_hours_section">Active hours</string>
+    <string name="alarms_hours_enable">Only during certain hours</string>
+    <string name="alarms_start">Start</string>
+    <string name="alarms_end">End</string>
+    <string name="alarms_hours_desc">The urgent low alarm always sounds, even outside active hours.</string>
+    <string name="alarms_test_section">Test</string>
+    <string name="alarms_test">Test the full-screen alarm</string>
+    <string name="alarms_persistent_section">Persistent alarms</string>
+    <string name="alarms_persistent_high">Persistent high</string>
+    <string name="alarms_persistent_high_th">High threshold</string>
+    <string name="alarms_persistent_high_dur">Duration</string>
+    <string name="alarms_persistent_low">Persistent low</string>
+    <string name="alarms_persistent_low_th">Low threshold</string>
+    <string name="alarms_persistent_low_dur">Duration</string>
+    <string name="alarms_persistent_desc">Sounds only if glucose stays above/below the threshold for the whole set duration.</string>
+
+    <!-- Log -->
+    <string name="log_clear">Clear</string>
+    <string name="log_stop">Stop</string>
+    <string name="log_start">Start</string>
+
+    <!-- Recent history + CSV import -->
+    <string name="home_recent">Recent history</string>
+    <string name="home_recent_empty">No stored readings yet.</string>
+    <string name="stats_import">Import file (CSV)</string>
+    <string name="stats_importing">Importing…</string>
+    <string name="stats_import_done">%1$d readings imported</string>
+    <string name="stats_import_error">Import error: %1$s</string>
+
+    <!-- Cloud / LibreView upload -->
+    <string name="title_cloud">Cloud / LibreView</string>
+    <string name="set_cloud_s">Send readings to LibreView/LibreLinkUp</string>
+    <string name="cloud_enable">Send to cloud</string>
+    <string name="cloud_email">LibreView email</string>
+    <string name="cloud_password">LibreView password</string>
+    <string name="cloud_test">Test now</string>
+    <string name="cloud_testing">Sending…</string>
+    <string name="cloud_test_ok">Sent successfully.</string>
+    <string name="cloud_warning">Warning: running alongside the official LibreLink app on the same account can cause conflicts. Wrong logins can temporarily lock the account.</string>
+    <string name="cloud_status_uploading">Sending…</string>
+    <string name="cloud_status_ok">Last upload: %1$s (%2$d mg/dL)</string>
+    <string name="cloud_status_error">Error: %1$s</string>
+
+    <!-- Statistics: AGP (Ambulatory Glucose Profile) -->
+    <string name="stats_agp_title">Glucose profile (AGP)</string>
+    <string name="stats_agp_desc">Median and percentiles across 24 h, all days overlaid. Target %1$s–%2$s %3$s.</string>
+    <string name="stats_agp_legend_median">Median</string>
+    <string name="stats_agp_legend_iqr">25–75%</string>
+    <string name="stats_agp_legend_p10_90">10–90%</string>
+    <!-- Statistics: summary additions -->
+    <string name="stat_median">Median</string>
+    <string name="stat_iqr">Range 25–75%</string>
+    <!-- Statistics: daily trend -->
+    <string name="stats_daily_title">Daily trend</string>
+    <string name="stats_daily_desc">Time in range per day. Average %1$d%%.</string>
+    <!-- Statistics: variability (GVI + PGS) -->
+    <string name="stats_variability_title">Variability</string>
+    <string name="stat_gvi">Variability index (GVI)</string>
+    <string name="stat_stability">Stability</string>
+    <string name="stat_pgs">Glucose status (PGS)</string>
+    <string name="gvi_excellent">Excellent</string>
+    <string name="gvi_good">Good</string>
+    <string name="gvi_moderate">Moderate</string>
+    <string name="gvi_poor">Poor</string>
+    <string name="pgs_low">Low</string>
+    <string name="pgs_elevated">Elevated</string>
+    <string name="pgs_unstable">Unstable</string>
+    <string name="pgs_stable">Stable</string>
+    <!-- Statistics: insights -->
+    <string name="stats_insights_title">Insights</string>
+    <string name="insight_excellent_control">Excellent control</string>
+    <string name="insight_excellent_control_desc">%1$d%% of time in range. Keep it up!</string>
+    <string name="insight_good_progress">Good progress</string>
+    <string name="insight_good_progress_desc">%1$d%% in range. Close to target.</string>
+    <string name="insight_room_improvement">Room to improve</string>
+    <string name="insight_room_improvement_desc">%1$d%% in range. Aim for 70%%.</string>
+    <string name="insight_stable_glucose">Stable glucose</string>
+    <string name="insight_stable_glucose_desc">Variability %1$d%% (CV ≤ 36%%).</string>
+    <string name="insight_variability_rising">Variability rising</string>
+    <string name="insight_variability_rising_desc">CV %1$.1f%%. Watch meals and doses.</string>
+    <string name="insight_high_variability">High variability</string>
+    <string name="insight_high_variability_desc">CV %1$d%%. Large glucose swings.</string>
+    <string name="insight_hypo_exposure">Hypoglycemia exposure</string>
+    <string name="insight_hypo_exposure_desc">%1$.1f%% of time below 54. Review thresholds.</string>
+    <string name="insight_prolonged_hyper">Prolonged hyperglycemia</string>
+    <string name="insight_prolonged_hyper_desc">%1$.1f%% of time above the high threshold.</string>
+    <string name="insight_overnight_drift">Overnight rise</string>
+    <string name="insight_overnight_drift_desc">Glucose runs higher overnight than during the day.</string>
+    <string name="insight_unstable_days">Unstable days</string>
+    <string name="insight_unstable_days_desc">%1$d days below 50%% in range.</string>
+    <string name="insight_a1c_estimate">High estimated HbA1c</string>
+    <string name="insight_a1c_estimate_desc">GMI %1$.1f%%. Discuss with your doctor.</string>
+</resources>
