@@ -27,7 +27,7 @@ class AndroidGattTransport(
         val uuid = uuidFor(characteristic)
         BleLog.log("BLE write $characteristic len=${message.size} data=${BleLog.hex(message)}")
         for (frag in BleFraming.fragmentForWrite(message)) {
-            conn.writeCharacteristic(uuid, frag, withResponse = true)
+            conn.writeCharacteristic(uuid, frag, withResponse = true, timeoutMs = perFragmentTimeoutMs)
         }
     }
 
@@ -50,7 +50,12 @@ class AndroidGattTransport(
 
     override suspend fun writeCommand(command: Int) {
         BleLog.log("BLE write command=0x%02x".format(command))
-        conn.writeCharacteristic(LibreSensorGatt.SEC_COMMAND_RESPONSE, byteArrayOf(command.toByte()), withResponse = true)
+        conn.writeCharacteristic(
+            LibreSensorGatt.SEC_COMMAND_RESPONSE,
+            byteArrayOf(command.toByte()),
+            withResponse = true,
+            timeoutMs = perFragmentTimeoutMs,
+        )
     }
 
     override suspend fun awaitCommandResponse(timeoutMs: Long): ByteArray {

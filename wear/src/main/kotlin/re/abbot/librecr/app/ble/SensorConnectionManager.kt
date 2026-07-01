@@ -351,7 +351,7 @@ class SensorConnectionManager(
                 val autoConnect: Boolean
                 if (knownAddress != null) {
                     device = adapter.getRemoteDevice(knownAddress)
-                    autoConnect = reconnectAttempt >= 3
+                    autoConnect = reconnectAttempt > 0
                     _state.value = ConnectionState.CONNECTING
                     _statusLine.value = "connecting $knownAddress"
                     reconLog("SENSOR_DIRECT_CONNECT target=$knownAddress autoConnect=$autoConnect attempt=$reconnectAttempt")
@@ -981,7 +981,7 @@ class SensorConnectionManager(
     companion object {
         private const val STOP_JOIN_TIMEOUT_MS = 5_000L
         private const val WATCHDOG_CHECK_MS = 15_000L
-        private const val NO_DATA_TIMEOUT_MS = 105_000L // glucose is minute-spaced; reconnect after one clearly missed minute
+        private const val NO_DATA_TIMEOUT_MS = 75_000L // glucose is minute-spaced; reconnect shortly after one missed minute
         private const val POST_AUTH_PATCH_CONTROL_TIMEOUT_MS = 10_000L
         private const val HANDSHAKE_WAKE_LOCK_TIMEOUT_MS = 90_000L
         private const val PERSIST_SLOW_WARN_MS = 1_000L

@@ -71,7 +71,7 @@ fun GlucoseChartCard(
     val orderedSamples = remember(samples) {
         samples
             .asSequence()
-            .filter { it.atMs > 0L && it.mgDl in 20..500 }
+            .filter { it.atMs > 0L && it.mgDl in 1..500 }
             .sortedBy { it.atMs }
             .distinctBy { it.atMs }
             .toList()
@@ -439,10 +439,10 @@ private fun yBounds(
     val padding = max(tickStep * 0.45f, (dataMax - dataMin) * 0.12f)
     var low = floor((dataMin - padding) / tickStep) * tickStep
     var high = ceil((dataMax + padding) / tickStep) * tickStep
-    low = low.coerceAtLeast(20f)
+    low = low.coerceAtLeast(0f)
     high = high.coerceAtMost(450f)
     if (high - low < tickStep * 2f) {
-        low = (low - tickStep).coerceAtLeast(20f)
+        low = (low - tickStep).coerceAtLeast(0f)
         high = (high + tickStep).coerceAtMost(450f)
     }
     return low to max(high, low + tickStep)

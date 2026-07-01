@@ -77,7 +77,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     val glucose: GlucoseUi? = local
         ?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs, nowMs) }
         ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, nowMs) }?.let {
-            GlucoseUi(it.mgDL, it.trend, it.lifeCount, it.mgDL in 40..400, it.receivedAtMs, it.deltaMgDlPerMin)
+            GlucoseUi(it.mgDL, it.trend, it.lifeCount, it.mgDL in 1..500, it.receivedAtMs, it.deltaMgDlPerMin)
         }
     // Closes the watch→phone timeline: the relayed reading is now on screen. Keyed by the
     // reading's identity so it fires once per reading, not on every recomposition.

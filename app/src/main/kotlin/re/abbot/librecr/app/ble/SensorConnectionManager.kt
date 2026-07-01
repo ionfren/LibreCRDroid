@@ -1,5 +1,6 @@
 package re.abbot.librecr.app.ble
 
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.PowerManager
@@ -262,7 +263,8 @@ class SensorConnectionManager(
     private suspend fun runLoop(session: ImportedSession) {
         val scanner = SensorScanner(adapter)
         var currentSession = session
-        var backoffMs = 2_000L
+        var backoffMs = RECONNECT_BACKOFF_INITIAL_MS
+        var reconnectAttempt = 0
         loadCachedPhase5RawKeyIfNeeded()
         loadLastSentReadingIfNeeded()
 
@@ -274,7 +276,8 @@ class SensorConnectionManager(
                     _statusLine.value = "Bluetooth oprit; aștept repornirea"
                     BleLog.log("manager: Bluetooth disabled; waiting before scan")
                     waitForBluetoothEnabled()
-                    backoffMs = 2_000L
+                    backoffMs = RECONNECT_BACKOFF_INITIAL_MS
+                    reconnectAttempt = 0
                     continue
                 }
 
@@ -290,12 +293,29 @@ class SensorConnectionManager(
                 val firstPairEphemeral = if (canResume) null else prepareFirstPairEphemeral()
                 kotlin.coroutines.coroutineContext.ensureActive()
 
-                _state.value = ConnectionState.SCANNING
-                _statusLine.value = "scanning for ${currentSession.bleAddress}"
-                val scan = scanner.findSensor(currentSession.bleAddress, currentSession.bleDeviceName, timeoutMs = 60_000)
-                    ?: throw IllegalStateException("sensor not found")
-                currentSession = rememberObservedIdentity(currentSession, scan)
-                val device = scan.device
+                val knownAddress = currentSession.bleAddress
+                    .takeIf { BluetoothAdapter.checkBluetoothAddress(it.uppercase()) }
+                    ?.uppercase()
+                val device: android.bluetooth.BluetoothDevice
+                val autoConnect: Boolean
+                if (knownAddress != null) {
+                    device = adapter.getRemoteDevice(knownAddress)
+                    autoConnect = reconnectAttempt > 0
+                    _state.value = ConnectionState.CONNECTING
+                    _statusLine.value = "connecting $knownAddress"
+                    BleLog.log(
+                        "manager: direct connect target=$knownAddress autoConnect=$autoConnect " +
+                            "attempt=$reconnectAttempt",
+                    )
+                } else {
+                    _state.value = ConnectionState.SCANNING
+                    _statusLine.value = "scanning for ${currentSession.bleAddress}"
+                    val scan = scanner.findSensor(currentSession.bleAddress, currentSession.bleDeviceName, timeoutMs = 60_000)
+                        ?: throw IllegalStateException("sensor not found")
+                    currentSession = rememberObservedIdentity(currentSession, scan)
+                    device = scan.device
+                    autoConnect = false
+                }
 
                 _state.value = ConnectionState.CONNECTING
                 _statusLine.value = "connecting ${device.address}"
@@ -308,7 +328,7 @@ class SensorConnectionManager(
                     if (!disconnected.isCompleted) disconnected.complete(Unit)
                 }
                 // Libre 3 accepts connections on ~minute-spaced windows → long connect timeout.
-                c.connectAndDiscover(connectTimeoutMs = 120_000, discoverTimeoutMs = 45_000)
+                c.connectAndDiscover(connectTimeoutMs = 120_000, discoverTimeoutMs = 45_000, autoConnect = autoConnect)
 
                 _state.value = ConnectionState.HANDSHAKING
                 _statusLine.value = if (cachedPhase5RawKey != null) "handshake: cached reconnect" else "handshake: full local derivation"
@@ -326,7 +346,8 @@ class SensorConnectionManager(
                 _state.value = ConnectionState.STREAMING
                 _statusLine.value = "streaming"
                 lastGlucoseAt.set(System.currentTimeMillis())
-                backoffMs = 2_000L
+                backoffMs = RECONNECT_BACKOFF_INITIAL_MS
+                reconnectAttempt = 0
 
                 coroutineScope {
                     val backfillRequests = Channel<BackfillRequest>(Channel.UNLIMITED)
@@ -365,13 +386,14 @@ class SensorConnectionManager(
             }
 
             _state.value = ConnectionState.RECONNECTING
-            _statusLine.value = "reconnecting in ${backoffMs / 1000}s"
+            _statusLine.value = if (backoffMs < 1_000L) "reconnecting now" else "reconnecting in ${backoffMs / 1000}s"
             BleLog.log(
                 "manager: reconnect scheduled in ${backoffMs}ms; next attempt will redo scan/connect and " +
                     (if (cachedPhase5RawKey != null) "try cached reconnect" else "run full handshake")
             )
             delay(backoffMs)
             backoffMs = minOf(backoffMs * 2, 30_000L)
+            reconnectAttempt += 1
         }
     }
 
@@ -538,7 +560,17 @@ class SensorConnectionManager(
         val assembler = DataPlaneNotificationAssembler()
         var pendingFirstNotifyTs = 0L
         while (true) {
-            val frag = channel.receive()
+            val frag = if (pendingFirstNotifyTs > 0L) {
+                withTimeoutOrNull(FRAGMENT_ASSEMBLY_TIMEOUT_MS) { channel.receive() } ?: run {
+                    BleLog.log(
+                        "[ANOMALY] REASSEMBLY: glucose suffix timeout after ${FRAGMENT_ASSEMBLY_TIMEOUT_MS}ms; reconnecting",
+                    )
+                    conn.disconnect()
+                    throw IllegalStateException("glucose suffix timeout")
+                }
+            } else {
+                channel.receive()
+            }
             val notifyAtMs = System.currentTimeMillis()
             val result = assembler.feedDetailed(frag, DataPlaneChannel.GLUCOSE_DATA)
             result.flushedOrphanAgeMs?.let { age ->
@@ -856,10 +888,12 @@ class SensorConnectionManager(
     companion object {
         private const val STOP_JOIN_TIMEOUT_MS = 5_000L
         private const val WATCHDOG_CHECK_MS = 15_000L
-        private const val NO_DATA_TIMEOUT_MS = 105_000L // glucose is minute-spaced; reconnect after one clearly missed minute
+        private const val NO_DATA_TIMEOUT_MS = 75_000L // glucose is minute-spaced; reconnect shortly after one missed minute
+        private const val RECONNECT_BACKOFF_INITIAL_MS = 500L
         private const val POST_AUTH_PATCH_CONTROL_TIMEOUT_MS = 10_000L
         private const val HANDSHAKE_WAKE_LOCK_TIMEOUT_MS = 90_000L
         private const val PERSIST_SLOW_WARN_MS = 1_000L
+        private const val FRAGMENT_ASSEMBLY_TIMEOUT_MS = 8_000L
         private const val GLUCOSE_ISSUE_VALUE_UNAVAILABLE = "VALUE_UNAVAILABLE"
         private const val GLUCOSE_ISSUE_DATA_QUALITY = "DATA_QUALITY"
         private const val GLUCOSE_ISSUE_SENSOR_CONDITION = "SENSOR_CONDITION"

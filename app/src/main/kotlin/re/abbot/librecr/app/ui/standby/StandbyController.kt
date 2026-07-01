@@ -9,7 +9,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.res.Configuration
 import android.os.Build
 import android.os.BatteryManager
 import android.os.Handler
@@ -30,7 +29,8 @@ import java.util.Calendar
  * Standby launcher, modelled on Juggluco's `StandbyMode`. The Compose-conditional approach can
  * never show standby when the phone is on a charger with the screen off / app backgrounded, because
  * the main Activity isn't running. Instead we listen for power changes and, on a WIRELESS charger
- * inside the configured window, surface a full-screen [StandbyActivity].
+ * inside the configured window, surface a full-screen [StandbyActivity] that owns landscape
+ * orientation.
  *
  * A direct launch is attempted first for immediate activation. If Android blocks the background
  * launch, a high-priority full-screen intent is posted as a fallback.
@@ -113,11 +113,10 @@ object StandbyController {
             val settings = LibreCR.settings.current()
             val wireless = isWirelessCharging(app)
             val inWindow = isInWindow(settings.redStandbyStartMinutes, settings.redStandbyEndMinutes)
-            val landscape = isLandscape(app)
-            val eligible = settings.redStandbyEnabled && wireless && inWindow && landscape
+            val eligible = settings.redStandbyEnabled && wireless && inWindow
             BleLog.log(
                 "standby: evaluate enabled=${settings.redStandbyEnabled} wireless=$wireless " +
-                    "inWindow=$inWindow landscape=$landscape visible=$visible",
+                    "inWindow=$inWindow visible=$visible",
             )
             if (eligible) {
                 if (!visible && !launchPending) launchImmediately(app)
@@ -141,8 +140,7 @@ object StandbyController {
     private fun eligible(context: Context, settings: AppSettings): Boolean =
         settings.redStandbyEnabled &&
             isWirelessCharging(context) &&
-            isInWindow(settings.redStandbyStartMinutes, settings.redStandbyEndMinutes) &&
-            isLandscape(context)
+            isInWindow(settings.redStandbyStartMinutes, settings.redStandbyEndMinutes)
 
     private fun launchImmediately(context: Context) {
         launchPending = true
@@ -216,9 +214,6 @@ object StandbyController {
         val plugged = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
         (plugged and BatteryManager.BATTERY_PLUGGED_WIRELESS) != 0
     }.getOrDefault(false)
-
-    private fun isLandscape(context: Context): Boolean =
-        context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     private fun isInWindow(start: Int, end: Int): Boolean {
         if (start == end) return true // equal start/end = always

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import android.os.Build
@@ -26,7 +27,7 @@ import re.abbot.librecr.app.ui.theme.LibreCRTheme
 /**
  * Full-screen standby (nightstand) shown over the lock screen while the phone is on a wireless
  * charger. Launched by [StandbyController]; self-finishes when no longer eligible (unplugged or
- * outside the window). Reuses the existing [StandbyScreen] composable.
+ * outside the window). Standby is landscape-only, matching a horizontal charging dock.
  */
 class StandbyActivity : ComponentActivity() {
 
@@ -40,10 +41,7 @@ class StandbyActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
-            finish()
-            return
-        }
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -93,8 +91,11 @@ class StandbyActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            StandbyController.evaluate(applicationContext)
             finish()
+            return
         }
+        hideSystemBars()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

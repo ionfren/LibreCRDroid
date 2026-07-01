@@ -52,7 +52,7 @@
     <string name="standby_no_reading">fără citire</string>
     <string name="standby_title">Standby roșu</string>
     <string name="standby_enable">Activează standby roșu</string>
-    <string name="standby_desc">Când telefonul este în landscape, la încărcat și în intervalul orar setat, afișează un ceas mare, glicemia și trendul pe fundal roșu/negru. Ecranul rămâne aprins și conținutul se mută foarte discret pentru protecție anti burn-in.</string>
+    <string name="standby_desc">Când telefonul este în landscape, pe încărcător wireless și în intervalul orar setat, afișează un ceas mare, glicemia și trendul pe fundal negru. Afișajul rămâne landscape, ecranul stă aprins și conținutul se mută discret pentru protecție anti burn-in.</string>
     <string name="standby_hours_desc">Standby pornește doar între orele de mai sus. Intervalele peste miezul nopții sunt acceptate.</string>
     <string name="sensor_section">Senzor</string>
     <string name="sensor_waiting_status">Aștept primul status de la senzor pentru a calcula durata rămasă.</string>

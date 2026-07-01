@@ -31,12 +31,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.ble.GlucoseUi
 import re.abbot.librecr.protocol.TrendArrowShape
+import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
 import kotlin.math.max
@@ -56,6 +59,7 @@ class AodGlucoseOverlayService : AccessibilityService() {
     private var storedReading: GlucoseUi? = null
     private var burnInIndex = 0
     private var currentPosition = AodSettings.POSITION_TOP
+    private var currentUnit: GlucoseUnit = GlucoseUnit.MG_DL
     private lateinit var prefs: SharedPreferences
 
     private val currentReading: GlucoseUi?
@@ -177,6 +181,15 @@ class AodGlucoseOverlayService : AccessibilityService() {
                 replaceHistory(storedHistory.map { it.toGlucoseUi() })
             }
         }
+        scope.launch {
+            LibreCR.settings.settingsFlow
+                .map { it.unit }
+                .distinctUntilChanged()
+                .collectLatest { unit ->
+                    currentUnit = unit
+                    aodView?.setGlucoseUnit(unit)
+                }
+        }
     }
 
     private fun acceptReading(reading: GlucoseUi?) {
@@ -218,6 +231,7 @@ class AodGlucoseOverlayService : AccessibilityService() {
             val regular = ResourcesCompat.getFont(this, R.font.google_sans_rounded_regular) ?: Typeface.DEFAULT
             val view = AodGlucoseView(this, bold, regular).apply {
                 setAodSettings(settings)
+                setGlucoseUnit(currentUnit)
                 setReading(currentReading, history.toList())
             }
             val lp = WindowManager.LayoutParams(
@@ -400,12 +414,19 @@ private class AodGlucoseView(
     private val chartRect = RectF()
     private val path = Path()
     private var settings = AodSettings.load(context)
+    private var glucoseUnit: GlucoseUnit = GlucoseUnit.MG_DL
     private var reading: GlucoseUi? = null
     private var history: List<GlucoseUi> = emptyList()
     private var burnInAlpha = 0.96f
 
     fun setAodSettings(settings: AodSettings) {
         this.settings = settings
+        requestLayout()
+        invalidate()
+    }
+
+    fun setGlucoseUnit(unit: GlucoseUnit) {
+        glucoseUnit = unit
         requestLayout()
         invalidate()
     }
@@ -446,14 +467,14 @@ private class AodGlucoseView(
         canvas.drawText("LibreCRDroid", pad + 14f.dpToPx(context), headerBaseline, labelPaint)
         canvas.drawText(age, width - pad - labelPaint.measureText(age), headerBaseline, labelPaint)
 
-        val glucose = reading?.mgDL?.toString() ?: "SE"
-        val unit = "mg/dL"
+        val glucose = reading?.mgDL?.let { glucoseUnit.format(it) } ?: "SE"
+        val unit = glucoseUnit.label
         val valueBaseline = headerBaseline + 58f.dpToPx(context) * settings.textScale.coerceIn(0.75f, 2.2f)
         val rowCenterY = valueBaseline + (valuePaint.ascent() + valuePaint.descent()) / 2f
         val showUnit = settings.showSecondary
         val showArrow = settings.showArrow && TrendArrowShape.hasArrow(reading?.trend)
         val arrowSize = if (showArrow) 34f.dpToPx(context) * settings.arrowScale * settings.textScale.coerceIn(0.75f, 2f) else 0f
-        val delta = deltaText(history)
+        val delta = deltaText(history, glucoseUnit)
         val unitWidth = if (showUnit) metaPaint.measureText(unit) + 9f.dpToPx(context) else 0f
         val arrowChipWidth = if (showArrow) arrowSize + 18f.dpToPx(context) else 0f
         val deltaChipWidth = delta?.let { metaPaint.measureText(it) + 20f.dpToPx(context) + 7f.dpToPx(context) } ?: 0f
@@ -530,8 +551,8 @@ private class AodGlucoseView(
         }
         if (points.size < 2) return
         canvas.drawLine(chartRect.left, chartRect.bottom, chartRect.right, chartRect.bottom, guidePaint)
-        val min = points.minOf { it.second }.coerceAtMost(70)
-        val max = points.maxOf { it.second }.coerceAtLeast(180)
+        val min = (points.minOf { it.second } - 20).coerceAtMost(70).coerceAtLeast(0)
+        val max = (points.maxOf { it.second } + 20).coerceAtLeast(180)
         val t0 = points.first().first
         val t1 = points.last().first.coerceAtLeast(t0 + 1L)
         path.reset()

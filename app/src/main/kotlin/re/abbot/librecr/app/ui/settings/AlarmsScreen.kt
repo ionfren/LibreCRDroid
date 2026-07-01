@@ -110,7 +110,7 @@ fun AlarmsScreen(modifier: Modifier = Modifier) {
         }
 
         SectionCard(stringResource(R.string.alarms_test_section)) {
-            FilledTonalButton(onClick = { GlucoseAlarmManager.fireTest(ctx, a.snoozeMinutes) }, modifier = Modifier.fillMaxWidth()) {
+            FilledTonalButton(onClick = { GlucoseAlarmManager.fireTest(ctx, a.snoozeMinutes, unit) }, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.alarms_test))
             }
         }

@@ -51,7 +51,7 @@
     <string name="standby_no_reading">aucune mesure</string>
     <string name="standby_title">Standby rouge</string>
     <string name="standby_enable">Activer le standby rouge</string>
-    <string name="standby_desc">Quand le téléphone est en paysage, en charge et dans la plage horaire configurée, affiche une grande horloge, la glycémie et la tendance sur fond rouge/noir. L’écran reste allumé et le contenu se déplace très discrètement contre le burn-in.</string>
+    <string name="standby_desc">Quand le téléphone est en paysage, sur un chargeur sans fil et dans la plage horaire configurée, affiche une grande horloge, la glycémie et la tendance sur fond noir. L’affichage reste en paysage, l’écran reste allumé et le contenu se déplace discrètement contre le burn-in.</string>
     <string name="standby_hours_desc">Le standby démarre seulement entre les heures ci-dessus. Les plages qui passent minuit sont prises en charge.</string>
     <string name="sensor_section">Capteur</string>
     <string name="sensor_waiting_status">En attente du premier statut du capteur pour calculer le temps restant.</string>

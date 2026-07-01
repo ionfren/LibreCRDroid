@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
@@ -62,9 +63,12 @@ class SensorForegroundService : Service() {
                 // Alarms + cloud upload are handled process-wide in LibreCR (keyed on the data
                 // store), so they fire for watch-relayed readings too. Here we just keep the
                 // foreground notification current.
-                LibreCR.manager.glucose.collectLatest { g ->
+                combine(
+                    LibreCR.manager.glucose,
+                    LibreCR.settings.settingsFlow,
+                ) { glucose, settings -> glucose to settings.unit }.collectLatest { (g, unit) ->
                     val mg = g?.mgDL
-                    notify(if (mg != null) "$mg mg/dL  ${g.trend}" else "no reading yet")
+                    notify(if (mg != null) "${unit.formatWithUnit(mg)}  ${g.trend}" else "no reading yet")
                 }
             }
         }

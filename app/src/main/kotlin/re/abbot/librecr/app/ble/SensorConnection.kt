@@ -10,6 +10,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,7 +38,8 @@ class SensorConnection(
 ) {
     @Volatile var onDisconnected: ((status: Int) -> Unit)? = null
 
-    private var gatt: BluetoothGatt? = null
+    @Volatile private var gatt: BluetoothGatt? = null
+    @Volatile private var closed = false
     private val characteristics = ConcurrentHashMap<UUID, BluetoothGattCharacteristic>()
     private val notifyChannels = ConcurrentHashMap<UUID, Channel<ByteArray>>()
 
@@ -57,25 +59,40 @@ class SensorConnection(
      * Connect, discover services, and enable only the security-handshake
      * notifications. Data-plane notifications are enabled once after Phase 6.
      */
-    suspend fun connectAndDiscover(connectTimeoutMs: Long, discoverTimeoutMs: Long) {
-        connect(connectTimeoutMs)
+    suspend fun connectAndDiscover(connectTimeoutMs: Long, discoverTimeoutMs: Long, autoConnect: Boolean = false) {
+        connect(connectTimeoutMs, autoConnect)
         // No connection-priority requests for Libre 3: HIGH/BALANCED caused random status=8 drops and
         // LOW_POWER made the handshake too slow. Use the default Android/sensor-negotiated parameters.
         discoverServices(discoverTimeoutMs)
         subscribeNotifyCharacteristics(LibreSensorGatt.handshakeNotifying, "handshake")
     }
 
-    private suspend fun connect(timeoutMs: Long) = opMutex.withLock {
+    private suspend fun connect(timeoutMs: Long, autoConnect: Boolean) = opMutex.withLock {
         val def = CompletableDeferred<Unit>()
         pendingConnect = def
-        BleLog.log("gatt.connect device=${device.address} (autoConnect=false)")
-        gatt = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
+        closed = false
+        BleLog.log("gatt.connect device=${device.address} (autoConnect=$autoConnect)")
+        val newGatt = runCatching {
+            device.connectGatt(context, autoConnect, callback, BluetoothDevice.TRANSPORT_LE)
+                ?: throw IllegalStateException("connectGatt returned null")
+        }.getOrElse {
+            pendingConnect = null
+            closed = true
+            throw it
+        }
+        gatt = newGatt
         try {
             withTimeout(timeoutMs) { def.await() }
-        } catch (e: Exception) {
-            BleLog.log("gatt.connect timeout/failure: ${e.message}")
+        } catch (e: TimeoutCancellationException) {
+            BleLog.log("gatt.connect timed out after ${timeoutMs}ms")
             close()
             throw e
+        } catch (e: Exception) {
+            BleLog.log("gatt.connect failure: ${e.message}")
+            close()
+            throw e
+        } finally {
+            if (pendingConnect === def) pendingConnect = null
         }
         BleLog.log("gatt.connect: connected")
     }
@@ -85,8 +102,19 @@ class SensorConnection(
         val def = CompletableDeferred<Unit>()
         pendingServices = def
         BleLog.log("gatt.discoverServices")
-        g.discoverServices()
-        withTimeout(timeoutMs) { def.await() }
+        if (!g.discoverServices()) {
+            pendingServices = null
+            throw IllegalStateException("discoverServices not accepted by Android GATT")
+        }
+        try {
+            withTimeout(timeoutMs) { def.await() }
+        } catch (e: TimeoutCancellationException) {
+            BleLog.log("gatt.discoverServices timed out after ${timeoutMs}ms")
+            close()
+            throw e
+        } finally {
+            if (pendingServices === def) pendingServices = null
+        }
         characteristics.clear()
         var serviceCount = 0
         for (svc in listOf(LibreSensorGatt.SERVICE, LibreSensorGatt.SECURITY_SERVICE)) {
@@ -122,13 +150,25 @@ class SensorConnection(
             val writeType = if (withResponse) BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
             else BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             BleLog.log("gatt.write ${short(uuid)} len=${value.size} withResponse=$withResponse")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                g.writeCharacteristic(c, value, writeType)
-            } else {
-                @Suppress("DEPRECATION")
-                run { c.writeType = writeType; c.value = value; g.writeCharacteristic(c) }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ensureBluetoothStatus("write ${short(uuid)}", g.writeCharacteristic(c, value, writeType))
+                } else {
+                    @Suppress("DEPRECATION")
+                    run {
+                        c.writeType = writeType
+                        c.value = value
+                        ensureStarted("write ${short(uuid)}", g.writeCharacteristic(c))
+                    }
+                }
+                withTimeout(timeoutMs) { def.await() }
+            } catch (e: TimeoutCancellationException) {
+                BleLog.log("gatt.write ${short(uuid)} timed out after ${timeoutMs}ms")
+                close()
+                throw e
+            } finally {
+                if (pendingWrite === def) pendingWrite = null
             }
-            withTimeout(timeoutMs) { def.await() }
         }
 
     suspend fun readCharacteristic(uuid: UUID, timeoutMs: Long = OP_TIMEOUT_MS): ByteArray =
@@ -138,8 +178,16 @@ class SensorConnection(
             val def = CompletableDeferred<ByteArray>()
             pendingRead = def
             BleLog.log("gatt.read ${short(uuid)}")
-            g.readCharacteristic(c)
-            withTimeout(timeoutMs) { def.await() }
+            try {
+                ensureStarted("read ${short(uuid)}", g.readCharacteristic(c))
+                withTimeout(timeoutMs) { def.await() }
+            } catch (e: TimeoutCancellationException) {
+                BleLog.log("gatt.read ${short(uuid)} timed out after ${timeoutMs}ms")
+                close()
+                throw e
+            } finally {
+                if (pendingRead === def) pendingRead = null
+            }
         }
 
     /** Enable/disable notifications: setCharacteristicNotification + CCCD write. */
@@ -148,7 +196,7 @@ class SensorConnection(
         val c = characteristics[uuid] ?: throw IllegalStateException("missing characteristic $uuid")
         if (!c.supportsNotifyOrIndicate()) throw IllegalStateException("characteristic $uuid is not notifiable")
         BleLog.log("gatt.notify: ${if (enable) "enable" else "disable"} ${short(uuid)}")
-        g.setCharacteristicNotification(c, enable)
+        ensureStarted("setCharacteristicNotification ${short(uuid)}", g.setCharacteristicNotification(c, enable))
         val cccd = c.getDescriptor(LibreSensorGatt.CCCD) ?: throw IllegalStateException("no CCCD on $uuid")
         val value = when {
             !enable -> BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
@@ -158,13 +206,24 @@ class SensorConnection(
         }
         val def = CompletableDeferred<Unit>()
         pendingDescriptor = def
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            g.writeDescriptor(cccd, value)
-        } else {
-            @Suppress("DEPRECATION")
-            run { cccd.value = value; g.writeDescriptor(cccd) }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ensureBluetoothStatus("writeDescriptor ${short(uuid)}", g.writeDescriptor(cccd, value))
+            } else {
+                @Suppress("DEPRECATION")
+                run {
+                    cccd.value = value
+                    ensureStarted("writeDescriptor ${short(uuid)}", g.writeDescriptor(cccd))
+                }
+            }
+            withTimeout(timeoutMs) { def.await() }
+        } catch (e: TimeoutCancellationException) {
+            BleLog.log("gatt.notify ${short(uuid)} timed out after ${timeoutMs}ms")
+            close()
+            throw e
+        } finally {
+            if (pendingDescriptor === def) pendingDescriptor = null
         }
-        withTimeout(timeoutMs) { def.await() }
         BleLog.log("gatt.notify: ${if (enable) "enabled" else "disabled"} ${short(uuid)} cccd=${BleLog.hex(value)}")
     }
 
@@ -192,11 +251,14 @@ class SensorConnection(
 
     fun close() {
         BleLog.log("gatt.close")
-        runCatching { gatt?.close() }
+        closed = true
+        val closingGatt = gatt
         gatt = null
+        characteristics.clear()
         failAllPending(IllegalStateException("connection closed"))
         notifyChannels.values.forEach { it.close() }
         notifyChannels.clear()
+        runCatching { closingGatt?.close() }
     }
 
     private fun failAllPending(e: Throwable) {
@@ -209,10 +271,19 @@ class SensorConnection(
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            if (ignoreStaleCallback(g, "onConnectionStateChange")) return
             BleLog.log("onConnectionStateChange status=$status newState=$newState")
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 pendingConnect?.complete(Unit); pendingConnect = null
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                closed = true
+                failAllPending(GattDisconnectedException(status))
+                val cb = onDisconnected
+                runCatching { g.close() }
+                gatt = null
+                cb?.invoke(status)
+            } else if (status != BluetoothGatt.GATT_SUCCESS) {
+                closed = true
                 failAllPending(GattDisconnectedException(status))
                 val cb = onDisconnected
                 runCatching { g.close() }
@@ -222,6 +293,7 @@ class SensorConnection(
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            if (ignoreStaleCallback(g, "onServicesDiscovered")) return
             BleLog.log("onServicesDiscovered status=$status")
             if (status == BluetoothGatt.GATT_SUCCESS) pendingServices?.complete(Unit)
             else pendingServices?.completeExceptionally(IllegalStateException("discover failed status=$status"))
@@ -229,12 +301,14 @@ class SensorConnection(
         }
 
         override fun onCharacteristicWrite(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
+            if (ignoreStaleCallback(g, "onCharacteristicWrite")) return
             if (status == BluetoothGatt.GATT_SUCCESS) pendingWrite?.complete(Unit)
             else pendingWrite?.completeExceptionally(IllegalStateException("write failed status=$status"))
             pendingWrite = null
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
+            if (ignoreStaleCallback(g, "onDescriptorWrite")) return
             if (status == BluetoothGatt.GATT_SUCCESS) pendingDescriptor?.complete(Unit)
             else pendingDescriptor?.completeExceptionally(IllegalStateException("descriptor write failed status=$status"))
             pendingDescriptor = null
@@ -242,6 +316,7 @@ class SensorConnection(
 
         // API 33+
         override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            if (ignoreStaleCallback(g, "onCharacteristicRead")) return
             if (status == BluetoothGatt.GATT_SUCCESS) pendingRead?.complete(value)
             else pendingRead?.completeExceptionally(IllegalStateException("read failed status=$status"))
             pendingRead = null
@@ -251,6 +326,7 @@ class SensorConnection(
         @Suppress("DEPRECATION")
         override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return // handled by the value overload
+            if (ignoreStaleCallback(g, "onCharacteristicRead")) return
             if (status == BluetoothGatt.GATT_SUCCESS) pendingRead?.complete(c.value ?: ByteArray(0))
             else pendingRead?.completeExceptionally(IllegalStateException("read failed status=$status"))
             pendingRead = null
@@ -258,6 +334,7 @@ class SensorConnection(
 
         // API 33+
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
+            if (ignoreStaleCallback(g, "onCharacteristicChanged")) return
             deliverNotify(c.uuid, value)
         }
 
@@ -265,13 +342,35 @@ class SensorConnection(
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return
+            if (ignoreStaleCallback(g, "onCharacteristicChanged")) return
             deliverNotify(c.uuid, c.value ?: ByteArray(0))
         }
     }
 
     private fun deliverNotify(uuid: UUID, value: ByteArray) {
+        if (closed) return
         BleLog.log("notify ${short(uuid)} len=${value.size} data=${BleLog.hex(value)}")
         notifyChannel(uuid).trySend(value)
+    }
+
+    private fun ignoreStaleCallback(g: BluetoothGatt, name: String): Boolean {
+        val current = gatt
+        if (closed || (current != null && current !== g)) {
+            BleLog.log("$name ignored for stale/closed GATT")
+            runCatching { g.close() }
+            return true
+        }
+        return false
+    }
+
+    private fun ensureStarted(operation: String, started: Boolean) {
+        if (!started) throw IllegalStateException("$operation not accepted by Android GATT")
+    }
+
+    private fun ensureBluetoothStatus(operation: String, status: Int) {
+        if (status != BLUETOOTH_STATUS_SUCCESS) {
+            throw IllegalStateException("$operation not accepted by Android GATT status=$status")
+        }
     }
 
     private fun short(uuid: UUID): String = uuid.toString().substring(4, 8)
@@ -284,5 +383,6 @@ class SensorConnection(
 
     companion object {
         const val OP_TIMEOUT_MS = 5_000L
+        private const val BLUETOOTH_STATUS_SUCCESS = 0
     }
 }

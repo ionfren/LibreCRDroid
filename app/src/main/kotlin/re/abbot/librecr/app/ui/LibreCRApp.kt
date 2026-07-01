@@ -83,8 +83,9 @@ fun LibreCRApp(
     val topLevel = route == null || TABS.any { it.route == route }
 
     // Standby is now a dedicated full-screen StandbyActivity launched by StandbyController when the
-    // phone is on a WIRELESS charger inside the window — even with the app backgrounded / screen off
-    // (the nightstand case). A Compose conditional here could only work while this screen is visible.
+    // phone is landscape on a WIRELESS charger inside the window — even with the app backgrounded /
+    // screen off (the nightstand case). A Compose conditional here could only work while this screen
+    // is visible.
     CompositionLocalProvider(LocalAppSettings provides settings) {
         Box(Modifier.fillMaxSize()) {
             if (!settings.agreementAccepted) {

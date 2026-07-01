@@ -51,7 +51,7 @@
     <string name="standby_no_reading">no reading</string>
     <string name="standby_title">Red Standby</string>
     <string name="standby_enable">Enable Red Standby</string>
-    <string name="standby_desc">When the phone is landscape, charging, and inside the configured time window, show a large clock, glucose and trend on a red/black background. The screen stays on and the content shifts very subtly for burn-in protection.</string>
+    <string name="standby_desc">When the phone is landscape, on a wireless charger, and inside the configured time window, show a large clock, glucose and trend on a black background. The display stays landscape, the screen stays on, and the content shifts subtly for burn-in protection.</string>
     <string name="standby_hours_desc">Standby starts only between the times above. Windows crossing midnight are supported.</string>
     <string name="sensor_section">Sensor</string>
     <string name="sensor_waiting_status">Waiting for the first sensor status to calculate the remaining time.</string>

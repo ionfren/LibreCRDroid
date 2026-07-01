@@ -8,6 +8,10 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.os.ParcelUuid
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import re.abbot.librecr.app.log.BleLog
@@ -65,11 +69,14 @@ class SensorScanner(private val adapter: BluetoothAdapter) {
             BleLog.log("scan: bluetoothLeScanner unavailable")
             return null
         }
-        val graceMs = if (!requireIdentityMatch) timeoutMs else minOf(12_000L, maxOf(4_000L, (timeoutMs * 0.12).toLong()))
+        val graceMs = if (!requireIdentityMatch) {
+            minOf(5_000L, maxOf(1_500L, (timeoutMs * 0.12).toLong()))
+        } else {
+            minOf(12_000L, maxOf(4_000L, (timeoutMs * 0.12).toLong()))
+        }
 
         val bestRssi = java.util.concurrent.atomic.AtomicInteger(Int.MIN_VALUE)
         val best = java.util.concurrent.atomic.AtomicReference<SensorScanResult?>(null)
-        val startedAt = System.currentTimeMillis()
         BleLog.log(
             "scan: pass start filtered=$filtered requireIdentityMatch=$requireIdentityMatch " +
                 "targets=${targets.ifEmpty { setOf("<any>") }} timeout=${timeoutMs}ms"
@@ -77,6 +84,7 @@ class SensorScanner(private val adapter: BluetoothAdapter) {
 
         val found = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
+                var selectionJob: Job? = null
                 val callback = object : ScanCallback() {
                     override fun onScanResult(callbackType: Int, result: ScanResult) {
                         if (!cont.isActive) return
@@ -84,28 +92,37 @@ class SensorScanner(private val adapter: BluetoothAdapter) {
                         val name = result.scanRecord?.deviceName ?: device.name
                         val scanResult = SensorScanResult(device, name)
                         if (!requireIdentityMatch) {
-                            BleLog.log("scan: found device=${device.address} name=${name ?: "<none>"} rssi=${result.rssi}")
-                            runCatching { scanner.stopScan(this) }
-                            cont.resume(scanResult); return
+                            if (result.rssi > bestRssi.get()) {
+                                bestRssi.set(result.rssi); best.set(scanResult)
+                                BleLog.log("scan: best candidate device=${device.address} name=${name ?: "<none>"} rssi=${result.rssi}")
+                            }
+                            if (selectionJob == null) {
+                                val scanCallback = this
+                                selectionJob = CoroutineScope(cont.context).launch {
+                                    delay(graceMs)
+                                    if (!cont.isActive) return@launch
+                                    val selected = best.get() ?: return@launch
+                                    BleLog.log(
+                                        "scan: grace elapsed; using strongest candidate " +
+                                            "device=${selected.device.address} rssi=${bestRssi.get()}",
+                                    )
+                                    runCatching { scanner.stopScan(scanCallback) }
+                                    cont.resume(selected)
+                                }
+                            }
+                            return
                         }
                         if (matchesIdentity(device, name, targets)) {
                             BleLog.log("scan: identity match device=${device.address} name=${name ?: "<none>"} rssi=${result.rssi}")
+                            selectionJob?.cancel()
                             runCatching { scanner.stopScan(this) }
                             cont.resume(scanResult); return
-                        }
-                        if (!requireIdentityMatch && result.rssi > bestRssi.get()) {
-                            bestRssi.set(result.rssi); best.set(scanResult)
-                            BleLog.log("scan: best candidate device=${device.address} name=${name ?: "<none>"} rssi=${result.rssi}")
-                            if (System.currentTimeMillis() - startedAt >= graceMs) {
-                                BleLog.log("scan: grace elapsed; using strongest candidate device=${device.address}")
-                                runCatching { scanner.stopScan(this) }
-                                cont.resume(scanResult)
-                            }
                         }
                     }
 
                     override fun onScanFailed(errorCode: Int) {
                         BleLog.log("scan failed code=$errorCode")
+                        selectionJob?.cancel()
                         if (cont.isActive) cont.resume(null)
                     }
                 }
@@ -123,7 +140,10 @@ class SensorScanner(private val adapter: BluetoothAdapter) {
                     BleLog.log("scan start failed: ${it.message}")
                     if (cont.isActive) cont.resume(null)
                 }
-                cont.invokeOnCancellation { runCatching { scanner.stopScan(callback) } }
+                cont.invokeOnCancellation {
+                    selectionJob?.cancel()
+                    runCatching { scanner.stopScan(callback) }
+                }
             }
         }
         val selected = found ?: best.get()

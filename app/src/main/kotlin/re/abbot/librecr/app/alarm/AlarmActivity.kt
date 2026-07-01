@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.ui.theme.LibreCRTheme
 
 /** Full-screen, lock-screen-visible glucose alarm with Snooze / Stop. */
@@ -50,6 +51,7 @@ class AlarmActivity : ComponentActivity() {
             return
         }
         val mgDl = intent.getIntExtra(GlucoseAlarmManager.EXTRA_MGDL, 0)
+        val unit = GlucoseUnit.fromName(intent.getStringExtra(GlucoseAlarmManager.EXTRA_UNIT))
         val snoozeMin = intent.getIntExtra(GlucoseAlarmManager.EXTRA_SNOOZE_MIN, 30)
         startFeedback()
 
@@ -58,6 +60,7 @@ class AlarmActivity : ComponentActivity() {
                 AlarmScreen(
                     kind = kind,
                     mgDl = mgDl,
+                    unit = unit,
                     snoozeMinutes = snoozeMin,
                     onSnooze = {
                         stopFeedback()
@@ -121,6 +124,7 @@ class AlarmActivity : ComponentActivity() {
 private fun AlarmScreen(
     kind: AlarmKind,
     mgDl: Int,
+    unit: GlucoseUnit,
     snoozeMinutes: Int,
     onSnooze: () -> Unit,
     onStop: () -> Unit,
@@ -146,8 +150,8 @@ private fun AlarmScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = accent)
-            Text("$mgDl", fontSize = 132.sp, fontWeight = FontWeight.Bold, color = accent)
-            Text("mg/dL", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(unit.format(mgDl), fontSize = 132.sp, fontWeight = FontWeight.Bold, color = accent)
+            Text(unit.label, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(48.dp))
             Button(
                 onClick = onSnooze,

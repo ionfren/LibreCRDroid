@@ -10,6 +10,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import re.abbot.librecr.app.data.AlarmSettings
+import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.stats.GlucoseSample
 import java.util.Calendar
@@ -27,6 +28,7 @@ object GlucoseAlarmManager {
     private const val NOTIF_ID = 42
     const val EXTRA_KIND = "re.abbot.librecr.app.alarm.KIND"
     const val EXTRA_MGDL = "re.abbot.librecr.app.alarm.MGDL"
+    const val EXTRA_UNIT = "re.abbot.librecr.app.alarm.UNIT"
     const val EXTRA_SNOOZE_MIN = "re.abbot.librecr.app.alarm.SNOOZE_MIN"
     const val ACTION_SNOOZE = "re.abbot.librecr.app.alarm.SNOOZE"
     const val ACTION_STOP = "re.abbot.librecr.app.alarm.STOP"
@@ -34,7 +36,13 @@ object GlucoseAlarmManager {
     private val snoozedUntil = ConcurrentHashMap<AlarmKind, Long>()
     @Volatile private var firing: AlarmKind? = null
 
-    fun onReading(context: Context, mgDl: Int, config: AlarmSettings, recentSamples: List<GlucoseSample>) {
+    fun onReading(
+        context: Context,
+        mgDl: Int,
+        config: AlarmSettings,
+        recentSamples: List<GlucoseSample>,
+        unit: GlucoseUnit = GlucoseUnit.MG_DL,
+    ) {
         ensureChannel(context)
         val now = System.currentTimeMillis()
         val minute = minuteOfDay(now)
@@ -67,7 +75,7 @@ object GlucoseAlarmManager {
         if (firing != decision.kind) {
             firing = decision.kind
             BleLog.log("alarm FIRE kind=${decision.kind} mgdl=${decision.mgDl}")
-            fire(context, decision.kind, decision.mgDl, config.snoozeMinutes)
+            fire(context, decision.kind, decision.mgDl, config.snoozeMinutes, unit)
         }
     }
 
@@ -83,19 +91,26 @@ object GlucoseAlarmManager {
     }
 
     /** Fire a sample LOW alarm so the user can preview the full-screen experience. */
-    fun fireTest(context: Context, snoozeMinutes: Int) {
+    fun fireTest(context: Context, snoozeMinutes: Int, unit: GlucoseUnit = GlucoseUnit.MG_DL) {
         ensureChannel(context)
         firing = AlarmKind.LOW
         BleLog.log("alarm fireTest snooze=$snoozeMinutes")
-        fire(context, AlarmKind.LOW, 55, snoozeMinutes)
+        fire(context, AlarmKind.LOW, 55, snoozeMinutes, unit)
     }
 
-    private fun fire(context: Context, kind: AlarmKind, mgDl: Int, snoozeMinutes: Int) {
+    private fun fire(
+        context: Context,
+        kind: AlarmKind,
+        mgDl: Int,
+        snoozeMinutes: Int,
+        unit: GlucoseUnit = GlucoseUnit.MG_DL,
+    ) {
         val app = context.applicationContext
         val full = Intent(app, AlarmActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             .putExtra(EXTRA_KIND, kind.name)
             .putExtra(EXTRA_MGDL, mgDl)
+            .putExtra(EXTRA_UNIT, unit.name)
             .putExtra(EXTRA_SNOOZE_MIN, snoozeMinutes)
         val piFlags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         val fullPi = PendingIntent.getActivity(app, 1, full, piFlags)
@@ -112,7 +127,7 @@ object GlucoseAlarmManager {
         )
         val notification = Notification.Builder(app, CHANNEL_ID)
             .setContentTitle(title(kind))
-            .setContentText("$mgDl mg/dL")
+            .setContentText(unit.formatWithUnit(mgDl))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setCategory(Notification.CATEGORY_ALARM)
             .setOngoing(true)

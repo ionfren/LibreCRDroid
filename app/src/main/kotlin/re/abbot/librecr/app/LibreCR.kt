@@ -82,10 +82,19 @@ object LibreCR {
         appScope.launch {
             store.glucoseHistoryFlow.collect { history ->
                 val r = history.lastOrNull() ?: return@collect
-                if (r.mgDL !in 40..400) return@collect
+                if (r.mgDL !in 1..500) return@collect
                 // Pass the recent series so persistent (sustained high/low) alarms can be evaluated.
                 val samples = history.map { GlucoseSample(it.mgDL, it.receivedAtMs) }
-                runCatching { GlucoseAlarmManager.onReading(app, r.mgDL, settings.current().alarms, samples) }
+                val currentSettings = settings.current()
+                runCatching {
+                    GlucoseAlarmManager.onReading(
+                        app,
+                        r.mgDL,
+                        currentSettings.alarms,
+                        samples,
+                        currentSettings.unit,
+                    )
+                }
                 uploader.uploadReading(r.mgDL, r.trend, r.lifeCount, r.receivedAtMs)
             }
         }

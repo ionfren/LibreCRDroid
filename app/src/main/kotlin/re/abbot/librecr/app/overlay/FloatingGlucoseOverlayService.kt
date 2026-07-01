@@ -27,6 +27,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
@@ -34,9 +36,9 @@ import re.abbot.librecr.app.R
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.protocol.TrendArrowShape
 import re.abbot.librecr.app.ble.GlucoseUi
+import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -49,6 +51,7 @@ class FloatingGlucoseOverlayService : Service() {
     private val history = ArrayDeque<GlucoseUi>()
     private var localReading: GlucoseUi? = null
     private var storedReading: GlucoseUi? = null
+    private var currentUnit: GlucoseUnit = GlucoseUnit.MG_DL
     private lateinit var prefs: SharedPreferences
 
     private val currentReading: GlucoseUi?
@@ -137,6 +140,7 @@ class FloatingGlucoseOverlayService : Service() {
 
         val view = FloatingGlucoseView(this, bold, regular).apply {
             setFloatingSettings(settings)
+            setGlucoseUnit(currentUnit)
             setReading(currentReading, history.toList())
             setOnClickListener { openApp() }
             setDragListener { dx, dy, finished ->
@@ -219,6 +223,15 @@ class FloatingGlucoseOverlayService : Service() {
             LibreCR.store.glucoseHistoryFlow.collectLatest { storedHistory ->
                 replaceHistory(storedHistory.map { it.toGlucoseUi() })
             }
+        }
+        scope.launch {
+            LibreCR.settings.settingsFlow
+                .map { it.unit }
+                .distinctUntilChanged()
+                .collectLatest { unit ->
+                    currentUnit = unit
+                    overlayView?.setGlucoseUnit(unit)
+                }
         }
         scope.launch {
             while (true) {
@@ -330,6 +343,7 @@ internal open class FloatingGlucoseView(
     private var reading: GlucoseUi? = null
     private var history: List<GlucoseUi> = emptyList()
     protected var currentSettings = FloatingSettings.load(context)
+    private var glucoseUnit: GlucoseUnit = GlucoseUnit.MG_DL
     private var downRawX = 0f
     private var downRawY = 0f
     private var pendingClick = false
@@ -337,6 +351,12 @@ internal open class FloatingGlucoseView(
 
     fun setFloatingSettings(settings: FloatingSettings) {
         currentSettings = settings
+        requestLayout()
+        invalidate()
+    }
+
+    fun setGlucoseUnit(unit: GlucoseUnit) {
+        glucoseUnit = unit
         requestLayout()
         invalidate()
     }
@@ -354,9 +374,9 @@ internal open class FloatingGlucoseView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         configurePaints()
-        val primary = reading?.mgDL?.toString() ?: "---"
-        val secondary = if (currentSettings.showSecondary) "mg/dL" else ""
-        val delta = deltaText(history, includeSymbol = false).orEmpty()
+        val primary = reading?.mgDL?.let { glucoseUnit.format(it) } ?: "---"
+        val secondary = if (currentSettings.showSecondary) glucoseUnit.label else ""
+        val delta = deltaText(history, glucoseUnit, includeSymbol = false).orEmpty()
         val showArrow = currentSettings.showArrow && TrendArrowShape.hasArrow(reading?.trend)
         val arrowWidth = if (showArrow) arrowSize() else 0f
         val arrowGap = if (showArrow) dp(1.5f) else 0f
@@ -380,7 +400,7 @@ internal open class FloatingGlucoseView(
     }
 
     protected fun drawFloatingContent(canvas: Canvas, bounds: RectF, aod: AodSettings? = null) {
-        val primary = reading?.mgDL?.toString() ?: "SE"
+        val primary = reading?.mgDL?.let { glucoseUnit.format(it) } ?: "SE"
         val baseY = bounds.centerY() - (valuePaint.ascent() + valuePaint.descent()) / 2f
         val leftPadding = dp(6f)
         val islandGap = if (currentSettings.dynamicIsland && aod == null) {
@@ -399,12 +419,12 @@ internal open class FloatingGlucoseView(
             drawTrendArrow(canvas, reading?.trend, x, arrowTop, size, Color.WHITE)
             x += size + dp(2f)
         }
-        deltaText(history, includeSymbol = false)?.let {
+        deltaText(history, glucoseUnit, includeSymbol = false)?.let {
             canvas.drawText(it, x, baseY, secondaryPaint)
             x += secondaryPaint.measureText(it) + dp(3f)
         }
         if (currentSettings.showSecondary || aod?.showSecondary == true) {
-            canvas.drawText("mg/dL", x, baseY, secondaryPaint)
+            canvas.drawText(glucoseUnit.label, x, baseY, secondaryPaint)
         }
     }
 
@@ -421,8 +441,8 @@ internal open class FloatingGlucoseView(
         }
         if (points.size < 2) return
         canvas.drawLine(chartRect.left, chartRect.bottom, chartRect.right, chartRect.bottom, chartGuidePaint)
-        val min = points.minOf { it.second }.coerceAtMost(70)
-        val max = points.maxOf { it.second }.coerceAtLeast(180)
+        val min = (points.minOf { it.second } - 20).coerceAtMost(70).coerceAtLeast(0)
+        val max = (points.maxOf { it.second } + 20).coerceAtLeast(180)
         val t0 = points.first().first
         val t1 = points.last().first.coerceAtLeast(t0 + 1L)
         path.reset()
@@ -518,15 +538,18 @@ internal open class FloatingGlucoseView(
     private fun RectF.insetCopy(inset: Float): RectF = RectF(left + inset, top + inset, right - inset, bottom - inset)
 }
 
-internal fun deltaText(history: List<GlucoseUi>, includeSymbol: Boolean = true): String? {
+internal fun deltaText(
+    history: List<GlucoseUi>,
+    unit: GlucoseUnit = GlucoseUnit.MG_DL,
+    includeSymbol: Boolean = true,
+): String? {
     val values = history.mapNotNull { reading ->
         val value = reading.mgDL ?: return@mapNotNull null
         reading.receivedAtMs to value
     }
     if (values.size < 2) return null
     val delta = values.last().second - values[values.lastIndex - 1].second
-    val prefix = if (delta > 0) "+" else ""
-    val value = "$prefix${String.format(Locale.US, "%d", delta)}"
+    val value = unit.formatDelta(delta.toDouble())
     return if (includeSymbol) "Δ $value" else value
 }
 
