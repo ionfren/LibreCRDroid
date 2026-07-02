@@ -39,6 +39,7 @@ import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.ble.GlucoseUi
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.log.GlucoseTimelineTracker
@@ -75,11 +76,17 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     val statusLine by LibreCR.manager.statusLine.collectAsState()
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    val glucose: GlucoseUi? = local
-        ?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs, nowMs) }
-        ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, nowMs) }?.let {
-            GlucoseUi(it.mgDL, it.trend, it.lifeCount, it.mgDL in 1..500, it.receivedAtMs, it.deltaMgDlPerMin)
-        }
+    // A fresh unusable live reading (sensor error) is the newest sensor state: show the error
+    // instead of falling back to the older stored value. mgDL is nulled so the headline renders
+    // the sensor-error text even when the raw packet carried a (bad-quality) number.
+    val glucose: GlucoseUi? = when {
+        local.isActiveSensorError(nowMs) -> local?.copy(mgDL = null)
+        else -> local
+            ?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs, nowMs) }
+            ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, nowMs) }?.let {
+                GlucoseUi(it.mgDL, it.trend, it.lifeCount, it.mgDL in 1..500, it.receivedAtMs, it.deltaMgDlPerMin)
+            }
+    }
     // Closes the watch→phone timeline: the relayed reading is now on screen. Keyed by the
     // reading's identity so it fires once per reading, not on every recomposition.
     LaunchedEffect(glucose?.lifeCount, glucose?.receivedAtMs) {
@@ -129,7 +136,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     ?: MaterialTheme.colorScheme.onSurface
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = mgDl?.let { settings.unit.format(it) } ?: "Sensor Error",
+                        text = mgDl?.let { settings.unit.format(it) } ?: stringResource(R.string.sensor_error),
                         fontSize = if (mgDl == null) 36.sp else 76.sp,
                         lineHeight = if (mgDl == null) 40.sp else 80.sp,
                         fontWeight = FontWeight.Bold,

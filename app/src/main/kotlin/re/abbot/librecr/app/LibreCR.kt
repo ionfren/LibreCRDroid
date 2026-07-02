@@ -69,14 +69,26 @@ object LibreCR {
                 .collect { WearDataSync.sendAppearance(app, it) }
         }
         appScope.launch {
+            // Pair the persisted reading with the live sensor-error timestamp (an unusable live
+            // reading is the newest sensor state and must replace the stale value on the lock screen).
+            val glucoseWithError = combine(manager.glucose, store.lastGlucoseFlow) { live, persisted ->
+                persisted to live?.takeIf { !it.usable }?.receivedAtMs
+            }
             combine(
                 settings.settingsFlow,
-                store.lastGlucoseFlow,
+                glucoseWithError,
                 store.sensorLifecycleFlow,
                 store.sessionFlow,
                 liveUpdateTicker(),
-            ) { appSettings, reading, lifecycle, session, _ ->
-                LiveUpdatesNotifier.State(appSettings.liveUpdates, appSettings.unit, reading, lifecycle, session)
+            ) { appSettings, (reading, sensorErrorAtMs), lifecycle, session, _ ->
+                LiveUpdatesNotifier.State(
+                    appSettings.liveUpdates,
+                    appSettings.unit,
+                    reading,
+                    lifecycle,
+                    session,
+                    sensorErrorAtMs,
+                )
             }.collect { state ->
                 LiveUpdatesNotifier.update(app, state)
             }

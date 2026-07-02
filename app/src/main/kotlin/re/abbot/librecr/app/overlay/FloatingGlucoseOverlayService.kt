@@ -36,6 +36,7 @@ import re.abbot.librecr.app.R
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.protocol.TrendArrowShape
 import re.abbot.librecr.app.ble.GlucoseUi
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
@@ -55,8 +56,14 @@ class FloatingGlucoseOverlayService : Service() {
     private lateinit var prefs: SharedPreferences
 
     private val currentReading: GlucoseUi?
-        get() = localReading?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
-            ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }
+        get() {
+            // A fresh unusable live reading is the newest sensor state: render "SE" instead of
+            // falling back to the older stored value.
+            val local = localReading
+            if (local.isActiveSensorError()) return local?.copy(mgDL = null)
+            return local?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
+                ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }
+        }
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         val settings = FloatingSettings.load(this)
@@ -367,7 +374,7 @@ internal open class FloatingGlucoseView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         configurePaints()
-        val primary = reading?.mgDL?.let { glucoseUnit.format(it) } ?: "---"
+        val primary = reading?.mgDL?.let { glucoseUnit.format(it) } ?: "SE"
         val secondary = if (currentSettings.showSecondary) glucoseUnit.label else ""
         val delta = deltaText(history, glucoseUnit, includeSymbol = false).orEmpty()
         val showArrow = currentSettings.showArrow && TrendArrowShape.hasArrow(reading?.trend)

@@ -53,6 +53,7 @@ import kotlinx.coroutines.delay
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.ble.GlucoseUi
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.app.data.AppSettings
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.isFreshGlucose
@@ -97,9 +98,14 @@ fun StandbyScreen(
     val remote by LibreCR.store.lastGlucoseFlow.collectAsState(initial = null)
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var burnInIndex by remember { mutableIntStateOf(0) }
-    val glucose = local
-        ?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs, now) }
-        ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, now) }?.toGlucoseUi()
+    // A fresh unusable live reading (sensor error) is the newest sensor state: show "SE" instead of
+    // falling back to the older stored value.
+    val glucose = when {
+        local.isActiveSensorError(now) -> local?.copy(mgDL = null)
+        else -> local
+            ?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs, now) }
+            ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, now) }?.toGlucoseUi()
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -282,7 +288,12 @@ private fun StandbyGlucosePanel(
     textAlign: TextAlign,
     modifier: Modifier = Modifier,
 ) {
-    val value = glucose?.mgDL?.let { settings.unit.format(it) } ?: stringResource(R.string.standby_no_reading)
+    // glucose != null with mgDL == null is the live sensor-error state → big "SE" instead of a value.
+    val value = when {
+        glucose == null -> stringResource(R.string.standby_no_reading)
+        glucose.mgDL == null -> stringResource(R.string.sensor_error_short)
+        else -> settings.unit.format(glucose.mgDL)
+    }
     val trendText = if (glucose == null) null else trendLabel(glucose.trend)
     val ageText = if (glucose == null) null else readingAgeText(glucose.receivedAtMs)
     val detailText = if (glucose == null) null else "$trendText / $ageText"

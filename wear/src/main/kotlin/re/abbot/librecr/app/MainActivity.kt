@@ -50,6 +50,7 @@ import re.abbot.librecr.app.data.WearDisplayFontWeight
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.log.GlucoseLatencyTracer
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.app.ble.toLastGlucose
 import re.abbot.librecr.app.service.SensorForegroundService
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
@@ -109,6 +110,10 @@ private fun WearScreen() {
     // is only the cold-start fallback (before the service has produced a reading this session).
     val live by LibreCR.manager.glucose.collectAsState()
     val persisted by LibreCR.store.lastGlucoseFlow.collectAsState(initial = null)
+    // A fresh unusable live reading (sensor error) is the newest sensor state: show "SE" instead of
+    // the older stored value. Re-evaluated on every recomposition (burn-in ticker) so it decays.
+    val sensorError = live.isActiveSensorError()
+    val sensorErrorAtMs = if (sensorError) live?.receivedAtMs else null
     val reading = live?.toLastGlucose() ?: persisted
     val appearance by LibreCR.appearance.settingsFlow.collectAsState(initial = WearAppearanceSettings())
     var burnInFrameIndex by remember { mutableStateOf(0) }
@@ -148,7 +153,7 @@ private fun WearScreen() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            WearReadingLayout(reading, appearance)
+            WearReadingLayout(reading, appearance, sensorErrorAtMs)
         }
     }
 }
@@ -175,41 +180,49 @@ private val WEAR_BURN_IN_FRAMES = listOf(
 private fun WearReadingLayout(
     reading: SensorStateStore.LastGlucose?,
     appearance: WearAppearanceSettings,
+    sensorErrorAtMs: Long? = null,
 ) {
-    val mgDl = reading?.mgDL
+    val sensorError = sensorErrorAtMs != null
+    val mgDl = if (sensorError) null else reading?.mgDL
     val fontWeight = appearance.fontWeight.toComposeFontWeight()
-    val stale = !isFresh(reading)
+    val stale = !sensorError && !isFresh(reading)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = mgDl?.let { appearance.unit.format(it) } ?: "--",
+            text = when {
+                sensorError -> "SE"
+                mgDl != null -> appearance.unit.format(mgDl)
+                else -> "--"
+            },
             fontSize = 76.sp,
             lineHeight = 76.sp,
             fontWeight = fontWeight,
             letterSpacing = 0.sp,
-            color = composeColor(appearance.glucoseColorFor(mgDl)),
+            color = if (sensorError) WearSensorErrorColor else composeColor(appearance.glucoseColorFor(mgDl)),
         )
-        TrendArrow(
-            trend = reading?.trend,
-            color = composeColor(appearance.trendColorFor(mgDl)),
-            size = 48.dp,
-            modifier = Modifier.alpha(if (reading == null) 0.48f else 1f),
-        )
+        if (!sensorError) {
+            TrendArrow(
+                trend = reading?.trend,
+                color = composeColor(appearance.trendColorFor(mgDl)),
+                size = 48.dp,
+                modifier = Modifier.alpha(if (reading == null) 0.48f else 1f),
+            )
+        }
     }
     Spacer(modifier = Modifier.size(10.dp))
     Text(
-        text = formatDelta(reading?.deltaMgDlPerMin, appearance.unit),
+        text = if (sensorError) "--" else formatDelta(reading?.deltaMgDlPerMin, appearance.unit),
         fontSize = 22.sp,
         lineHeight = 26.sp,
         fontWeight = fontWeight,
         color = composeColor(appearance.deltaColorFor(mgDl)),
-        modifier = Modifier.alpha(if (reading == null) 0.48f else 1f),
+        modifier = Modifier.alpha(if (reading == null || sensorError) 0.48f else 1f),
     )
     Spacer(modifier = Modifier.size(6.dp))
     Text(
-        text = reading?.receivedAtMs?.takeIf { it > 0L }?.let { formatTimestamp(it) } ?: "--:--",
+        text = (sensorErrorAtMs ?: reading?.receivedAtMs)?.takeIf { it > 0L }?.let { formatTimestamp(it) } ?: "--:--",
         fontSize = 16.sp,
         lineHeight = 20.sp,
         fontFamily = FontFamily.Monospace,
@@ -217,6 +230,9 @@ private fun WearReadingLayout(
         color = composeColor(appearance.timestampColor(stale)),
     )
 }
+
+/** Red accent for the live sensor-error state (matches the complications' error badge color). */
+private val WearSensorErrorColor = Color(0xFFE53935)
 
 private fun requiredPermissions(): Array<String> {
     val permissions = mutableListOf<String>()

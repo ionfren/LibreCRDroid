@@ -38,6 +38,7 @@ import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.ble.GlucoseUi
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.protocol.TrendArrowShape
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
@@ -64,8 +65,14 @@ class AodGlucoseOverlayService : AccessibilityService() {
     private lateinit var prefs: SharedPreferences
 
     private val currentReading: GlucoseUi?
-        get() = localReading?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
-            ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }
+        get() {
+            // A fresh unusable live reading is the newest sensor state: render "SE" instead of
+            // falling back to the older stored value.
+            val local = localReading
+            if (local.isActiveSensorError()) return local?.copy(mgDL = null)
+            return local?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
+                ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }
+        }
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         val settings = AodSettings.load(this)

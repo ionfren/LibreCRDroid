@@ -64,8 +64,13 @@ class SensorForegroundService : Service() {
                     LibreCR.manager.glucose,
                     LibreCR.appearance.settingsFlow,
                 ) { g, appearance -> g to appearance.unit }.collectLatest { (g, unit) ->
-                    val mg = g?.mgDL
-                    notify(if (mg != null) "${unit.formatWithUnit(mg)}  ${g.trend}" else "no reading yet")
+                    val text = when {
+                        g == null -> "no reading yet"
+                        !g.usable -> "sensor error"
+                        g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
+                        else -> "no reading yet"
+                    }
+                    notify(text)
                 }
             }
         }

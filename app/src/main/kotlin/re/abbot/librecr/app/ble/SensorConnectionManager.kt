@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import re.abbot.librecr.app.data.ImportedSession
 import re.abbot.librecr.app.data.SensorStateStore
+import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.wear.WearDataSync
@@ -58,6 +59,15 @@ data class GlucoseUi(
     /** Uncapped-below-floor value for mini-charts only; null ⇒ same as [mgDL] (headline stays capped). */
     val chartMgDL: Int? = null,
 )
+
+/**
+ * True while the sensor is actively reporting an unusable reading (VALUE_UNAVAILABLE / data
+ * quality / sensor condition). The live state only ever advances (stale/duplicate remote events
+ * are rejected before publishing), so a fresh unusable value IS the newest known sensor state —
+ * every UI surface should show "sensor error" instead of falling back to an older stored value.
+ */
+fun GlucoseUi?.isActiveSensorError(nowMs: Long = System.currentTimeMillis()): Boolean =
+    this != null && !usable && isFreshGlucose(receivedAtMs, nowMs)
 
 private data class BackfillRequest(
     val fromLifeCount: Int,

@@ -14,6 +14,7 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
+import re.abbot.librecr.app.ble.isActiveSensorError
 import re.abbot.librecr.app.ble.toLastGlucose
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceSettings
@@ -32,14 +33,22 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
 
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
         // In-memory live value first (instant); DataStore only when the service isn't running (cold).
-        val reading = LibreCR.manager.glucose.value?.toLastGlucose() ?: LibreCR.store.loadLastGlucose()
+        // A fresh unusable live reading (sensor error) is the newest sensor state: show "S.E."
+        // instead of falling back to the older stored value.
+        val live = LibreCR.manager.glucose.value
+        val sensorError = live.isActiveSensorError()
+        val reading = if (sensorError) null else live?.toLastGlucose() ?: LibreCR.store.loadLastGlucose()
         val appearance = LibreCR.appearance.current()
         val attention = LibreCR.store.loadSensorStatus()?.attention ?: Libre3SensorAttention.None
         // The OS asked us for fresh complication data — i.e. the watch face / AOD is about
         // to repaint with this reading. Gap to STORE_UPDATED is the complication-refresh throttle.
         reading?.let { GlucoseLatencyTracer.mark(it.lifeCount, GlucoseLatencyTracer.Stage.AOD_UPDATED) }
-        BleLog.log("WATCH_COMPLICATION_REQUEST lc=${reading?.lifeCount ?: -1} service=AgeDeltaComplicationService type=${request.complicationType}")
-        return buildData(request.complicationType, reading, tapAction(), appearance, attention)
+        BleLog.log("WATCH_COMPLICATION_REQUEST lc=${reading?.lifeCount ?: -1} sensorError=$sensorError service=AgeDeltaComplicationService type=${request.complicationType}")
+        return buildData(
+            request.complicationType, reading, tapAction(), appearance, attention,
+            sensorError = sensorError,
+            sensorErrorAtMs = if (sensorError) live?.receivedAtMs ?: 0L else 0L,
+        )
     }
 
     private fun buildData(
@@ -48,12 +57,17 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
         tapAction: PendingIntent?,
         appearance: WearAppearanceSettings = WearAppearanceSettings(),
         attention: Libre3SensorAttention = Libre3SensorAttention.None,
+        sensorError: Boolean = false,
+        sensorErrorAtMs: Long = 0L,
     ): ComplicationData {
         val image = Icon.createWithBitmap(
-            GlucoseComplicationRenderer.buildAgeDeltaBitmap(this, reading, appearance, attention = attention),
+            GlucoseComplicationRenderer.buildAgeDeltaBitmap(
+                this, reading, appearance, attention = attention,
+                sensorError = sensorError, sensorErrorAtMs = sensorErrorAtMs,
+            ),
         )
         val description = PlainComplicationText.Builder(
-            GlucoseComplicationRenderer.contentDescription("Glucose time and delta per minute", reading, attention, appearance.unit)
+            GlucoseComplicationRenderer.contentDescription("Glucose time and delta per minute", reading, attention, appearance.unit, sensorError)
         ).build()
         return when (type) {
             ComplicationType.PHOTO_IMAGE -> PhotoImageComplicationData.Builder(image, description)

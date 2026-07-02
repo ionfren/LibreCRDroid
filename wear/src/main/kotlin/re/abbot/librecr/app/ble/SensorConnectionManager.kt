@@ -77,6 +77,17 @@ fun GlucoseUi.toLastGlucose(): SensorStateStore.LastGlucose? {
     return SensorStateStore.LastGlucose(lifeCount, mg, trend, receivedAtMs, deltaMgDlPerMin)
 }
 
+private const val SENSOR_ERROR_FRESH_MS = 6 * 60_000L
+
+/**
+ * True while the sensor is actively reporting an unusable reading (VALUE_UNAVAILABLE / data
+ * quality / sensor condition). The live state only ever advances, so a fresh unusable value IS the
+ * newest known sensor state — the watch UI and complications should show "sensor error" instead of
+ * falling back to the older stored value.
+ */
+fun GlucoseUi?.isActiveSensorError(nowMs: Long = System.currentTimeMillis()): Boolean =
+    this != null && !usable && receivedAtMs > 0L && nowMs - receivedAtMs < SENSOR_ERROR_FRESH_MS
+
 /**
  * Owns the full connection lifecycle: scan → connect → security handshake
  * (fresh command-gated local derivation every attempt) → post-handshake CCCD enable →

@@ -41,6 +41,8 @@ object LiveUpdatesNotifier {
         val reading: SensorStateStore.LastGlucose?,
         val lifecycle: SensorStateStore.SensorLifecycleSnapshot?,
         val session: ImportedSession?,
+        /** When the live sensor state is an unusable reading: its timestamp; null when readings are good. */
+        val sensorErrorAtMs: Long? = null,
     )
 
     /**
@@ -56,6 +58,16 @@ object LiveUpdatesNotifier {
     ) {
         val app = context.applicationContext
         val settings = state.settings
+        // A fresh unusable live reading (sensor error) is the newest sensor state: surface it instead
+        // of keeping the previous value on the lock screen. Freshness is re-checked here on every 30s
+        // tick, so a sensor that goes silent decays to the normal stale/cancel path.
+        val sensorError = settings.enabled && state.sensorErrorAtMs?.let { isFreshGlucose(it) } == true
+        if (sensorError) {
+            ensureChannel(app)
+            maybePosted = true
+            notificationManager(app).notify(NOTIFICATION_ID, buildSensorErrorNotification(app, state))
+            return
+        }
         val reading = state.reading?.takeIf { isFreshGlucose(it.receivedAtMs) }
         if (!settings.enabled || reading == null) {
             if (maybePosted) {
@@ -71,6 +83,31 @@ object LiveUpdatesNotifier {
             NOTIFICATION_ID,
             buildNotification(app, displayState),
         )
+    }
+
+    private fun buildSensorErrorNotification(context: Context, state: State): Notification {
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            120,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val sensorLabel = sensorProgress(state).label(context)
+        val builder = Notification.Builder(context, CHANNEL_ID)
+            .setContentTitle(context.getString(R.string.sensor_error))
+            .setSubText(sensorLabel)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setLocalOnly(true)
+            .setShowWhen(false)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setContentIntent(contentIntent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA && state.settings.statusChipEnabled) {
+            builder.setShortCriticalText(context.getString(R.string.sensor_error_short))
+        }
+        return builder.build()
     }
 
     fun canPostPromotedNotifications(context: Context): Boolean? {
