@@ -55,6 +55,8 @@ data class GlucoseUi(
     val deltaMgDlPerMin: Double? = null,
     val readingIssue: String? = null,
     val readingIssueDetail: String? = null,
+    /** Uncapped-below-floor value for mini-charts only; null ⇒ same as [mgDL] (headline stays capped). */
+    val chartMgDL: Int? = null,
 )
 
 private data class BackfillRequest(
@@ -219,6 +221,7 @@ class SensorConnectionManager(
             usable = true,
             receivedAtMs = reading.receivedAtMs,
             deltaMgDlPerMin = reading.deltaMgDlPerMin,
+            chartMgDL = reading.chartMgDL,
         )
         lastSentReading = reading
         BleLog.log("PHONE_STATE_UPDATED lc=${reading.lifeCount} source=remote")
@@ -628,6 +631,7 @@ class SensorConnectionManager(
                         deltaMgDlPerMin = delta,
                         readingIssue = issue,
                         readingIssueDetail = issueDetail,
+                        chartMgDL = r.currentGlucoseChartMgDL,
                     )
                     BleLog.log("PHONE_STATE_UPDATED lc=${r.lifeCount} source=ble usable=$usable")
                     BleLog.log(

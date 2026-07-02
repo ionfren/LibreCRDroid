@@ -297,6 +297,7 @@ private fun SensorStateStore.LastGlucose.toGlucoseUi(): GlucoseUi =
         usable = true,
         receivedAtMs = receivedAtMs,
         deltaMgDlPerMin = deltaMgDlPerMin,
+        chartMgDL = chartMgDL,
     )
 
 internal open class FloatingGlucoseView(
@@ -426,8 +427,10 @@ internal open class FloatingGlucoseView(
         inRangeColor: Int,
         outOfRangeColor: Int,
     ) {
+        // Chart line only: the uncapped value so deep hypos below the ~40 "LO" floor stay visible.
+        // The headline number, delta text and colors keep the capped mgDL.
         val points = history.mapNotNull { g ->
-            val mg = g.mgDL ?: return@mapNotNull null
+            val mg = g.chartMgDL ?: g.mgDL ?: return@mapNotNull null
             if (mg <= 0) return@mapNotNull null
             g.receivedAtMs to mg
         }
