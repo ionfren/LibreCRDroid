@@ -415,6 +415,11 @@ class SensorConnectionManager(
 
         while (kotlin.coroutines.coroutineContext.isActive) {
             var conn: SensorConnection? = null
+            // The real cause of THIS attempt's teardown. pendingReconnectReason only updates via
+            // requestSensorReconnect (streaming-time drops), so on a connect/handshake failure it
+            // still holds the PREVIOUS drop's reason — logging it misled a field post-mortem
+            // (SENSOR_GATT_CLOSED said gatt_disconnect when the truth was a CCCD op timeout).
+            var attemptFailure: String? = null
             try {
                 if (!adapter.isEnabled) {
                     _state.value = ConnectionState.RECONNECTING
@@ -512,7 +517,9 @@ class SensorConnectionManager(
                     }
                 }
                 val material = auth.result.sessionMaterial
-                BleLog.log("manager: ${auth.mode} authorized kEnc=${material.kEnc.toHex()} ivEnc=${material.ivEnc.toHex()}")
+                // Key prefixes only — the full session key in a log that ships to the phone would
+                // let any log holder decrypt a captured BLE glucose stream.
+                BleLog.log("manager: ${auth.mode} authorized kEnc=${material.kEnc.toHex().take(8)}… ivEnc=${material.ivEnc.toHex().take(8)}…")
 
                 val crypto = DataPlaneCrypto(material.kEnc, material.ivEnc)
                 val decoder = DataPlaneDecoder(crypto)
@@ -559,12 +566,15 @@ class SensorConnectionManager(
                 // is a SUBCLASS of it, and the rethrow below silently killed the whole reconnect loop
                 // (field log 2026-07-05: post-handshake CCCD re-arm on 1bee timed out → loop dead →
                 // stale reading for 14+ min, no reconnect until app relaunch).
+                attemptFailure = "op_timeout: ${e.message}"
                 reconLog("SENSOR_RECONNECT_FAILED reason=op_timeout ${e.message}")
                 _statusLine.value = "error: ${e.message}"
             } catch (e: CancellationException) {
+                attemptFailure = "cancelled"
                 conn?.disconnect(); conn?.close()
                 throw e
             } catch (e: Exception) {
+                attemptFailure = e.message ?: e::class.java.simpleName
                 reconLog("SENSOR_RECONNECT_FAILED reason=${e.message}")
                 _statusLine.value = "error: ${e.message}"
             } finally {
@@ -572,7 +582,7 @@ class SensorConnectionManager(
                 reconnectSignal = null
                 if (conn != null) {
                     conn.close()
-                    reconLog("SENSOR_GATT_CLOSED reason=$pendingReconnectReason")
+                    reconLog("SENSOR_GATT_CLOSED reason=${attemptFailure ?: pendingReconnectReason}")
                 }
                 if (activeConnection === conn) activeConnection = null
             }

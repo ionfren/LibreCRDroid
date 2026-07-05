@@ -454,7 +454,9 @@ class SensorConnectionManager(
                     }
                 }
                 val material = auth.result.sessionMaterial
-                BleLog.log("manager: ${auth.mode} authorized kEnc=${material.kEnc.toHex()} ivEnc=${material.ivEnc.toHex()}")
+                // Key prefixes only — the full session key in a log would let any log holder
+                // decrypt a captured BLE glucose stream.
+                BleLog.log("manager: ${auth.mode} authorized kEnc=${material.kEnc.toHex().take(8)}… ivEnc=${material.ivEnc.toHex().take(8)}…")
 
                 val crypto = DataPlaneCrypto(material.kEnc, material.ivEnc)
                 val decoder = DataPlaneDecoder(crypto)
