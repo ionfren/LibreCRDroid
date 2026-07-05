@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -172,7 +173,21 @@ class SensorConnectionManager(
             "manager: starting independent BLE loop; cachedResumeKey=${cachedPhase5RawKey != null} " +
                 "allowCandidateFirstPair=$allowCandidateFirstPair transientKeyPersisted=false"
         )
-        loopJob = scope.launch { runLoop(localProvisioning) }
+        loopJob = scope.launch {
+            // The loop must never end silently: it is the only thing keeping readings alive, and a
+            // dead loop looks exactly like "stale value, no reconnect, empty log" in the field.
+            try {
+                runLoop(localProvisioning)
+                BleLog.log("manager: connection loop EXITED normally (unexpected — should only end by cancel)")
+            } catch (e: CancellationException) {
+                BleLog.log("manager: connection loop exited (cancelled by stop/restart)")
+                throw e
+            } catch (e: Throwable) {
+                BleLog.log("manager: connection loop CRASHED ${e::class.simpleName}: ${e.message}")
+                _statusLine.value = "loop crashed: ${e.message}"
+                throw e
+            }
+        }
     }
 
     fun stop() {
@@ -398,6 +413,14 @@ class SensorConnectionManager(
                     backfillRequests.close()
                     watchdog.cancel()
                 }
+            } catch (e: TimeoutCancellationException) {
+                // A GATT op timed out (withTimeout) — a reconnectable failure like any other GATT
+                // error. This branch MUST precede CancellationException: TimeoutCancellationException
+                // is a SUBCLASS of it, and the rethrow below silently killed the whole reconnect loop
+                // (hit in the field on the watch 2026-07-05: post-handshake CCCD re-arm timeout →
+                // loop dead → stale reading, no reconnect until app relaunch).
+                BleLog.log("manager: attempt failed (op timeout): ${e.message}")
+                _statusLine.value = "error: ${e.message}"
             } catch (e: CancellationException) {
                 conn?.disconnect(); conn?.close()
                 throw e

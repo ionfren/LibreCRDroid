@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -190,7 +191,21 @@ class SensorConnectionManager(
             "manager: starting independent BLE loop; cachedResumeKey=${cachedPhase5RawKey != null} " +
                 "allowCandidateFirstPair=$allowCandidateFirstPair transientKeyPersisted=false"
         )
-        loopJob = scope.launch { runLoop(localProvisioning) }
+        loopJob = scope.launch {
+            // The loop must never end silently: it is the only thing keeping readings alive, and a
+            // dead loop looks exactly like "stale value, no reconnect, empty log" in the field.
+            try {
+                runLoop(localProvisioning)
+                reconLog("SENSOR_LOOP_EXITED normally (unexpected — loop should only end by cancel)")
+            } catch (e: CancellationException) {
+                reconLog("SENSOR_LOOP_EXITED cancelled (stop/restart)")
+                throw e
+            } catch (e: Throwable) {
+                reconLog("SENSOR_LOOP_CRASHED ${e::class.simpleName}: ${e.message}")
+                _statusLine.value = "loop crashed: ${e.message}"
+                throw e
+            }
+        }
     }
 
     fun stop() {
@@ -512,6 +527,9 @@ class SensorConnectionManager(
                 lastBackfillRequestFrom = null
                 reconLog("SENSOR_RECONNECTED device=${device.address} attempt=$reconnectAttempt resume=${cachedPhase5RawKey != null}")
                 logTransportSnapshot("streaming_start")
+                // Diagnostic only (HCI query, no renegotiation): SENSOR_PHY in the shipped log
+                // answers whether the link runs at 2M — the precondition for ever trying a 1M force.
+                c.readPhy()
 
                 coroutineScope {
                     val backfillRequests = Channel<BackfillRequest>(Channel.UNLIMITED)
@@ -535,6 +553,14 @@ class SensorConnectionManager(
                     backfillRequests.close()
                     watchdog.cancel()
                 }
+            } catch (e: TimeoutCancellationException) {
+                // A GATT op timed out (withTimeout) — a reconnectable failure like any other GATT
+                // error. This branch MUST precede CancellationException: TimeoutCancellationException
+                // is a SUBCLASS of it, and the rethrow below silently killed the whole reconnect loop
+                // (field log 2026-07-05: post-handshake CCCD re-arm on 1bee timed out → loop dead →
+                // stale reading for 14+ min, no reconnect until app relaunch).
+                reconLog("SENSOR_RECONNECT_FAILED reason=op_timeout ${e.message}")
+                _statusLine.value = "error: ${e.message}"
             } catch (e: CancellationException) {
                 conn?.disconnect(); conn?.close()
                 throw e
