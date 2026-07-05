@@ -442,7 +442,7 @@ class SensorConnection(
     companion object {
         const val OP_TIMEOUT_MS = 5_000L
         /** Post-handshake CCCD enables ride the renegotiated low-power link (~2s listen windows). */
-        const val DATA_PLANE_CCCD_TIMEOUT_MS = 10_000L
+        const val DATA_PLANE_CCCD_TIMEOUT_MS = 20_000L
 
         // No connection-priority manipulation for Libre 3: every preset hurt (HIGH/BALANCED →
         // random status=8, LOW_POWER → handshake too slow, any mid-session change → status=19).
