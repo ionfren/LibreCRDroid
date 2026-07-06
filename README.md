@@ -4,7 +4,9 @@
 > This application is not a certified medical device. Do not make medical
 > decisions based on displayed values. Always verify blood glucose with a
 > certified glucometer.
-
+> 
+**⚠️Tested only on Pixel 10 pro XL and Pixel watch 4**
+> 
 Kotlin/Android port of [LibreCRKit](../LibreCRKit) (Swift/iOS) — full Libre 3
 protocol: NFC activation, BLE GATT transport, security handshake (Phase 5/6,
 AES white-box, P-256 ECDH/ECDSA), per-minute glucose decoding, and persistent

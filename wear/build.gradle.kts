@@ -1,8 +1,32 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val releaseProperties = Properties().apply {
+    val file = rootProject.file("release.properties")
+    if (file.isFile) {
+        file.inputStream().use(::load)
+    }
+}
+
+fun releaseProperty(name: String, environmentName: String): String? =
+    providers.environmentVariable(environmentName).orNull
+        ?: releaseProperties.getProperty(name)
+
+val releaseStoreFile = releaseProperty("storeFile", "LIBRECR_RELEASE_STORE_FILE")
+val releaseStorePassword = releaseProperty("storePassword", "LIBRECR_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseProperty("keyAlias", "LIBRECR_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseProperty("keyPassword", "LIBRECR_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "re.abbot.librecr.app"
@@ -16,9 +40,23 @@ android {
         versionName = "0.1.1"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -31,6 +69,9 @@ android {
     }
     buildFeatures {
         compose = true
+    }
+    lint {
+        disable += "NullSafeMutableLiveData"
     }
 }
 
