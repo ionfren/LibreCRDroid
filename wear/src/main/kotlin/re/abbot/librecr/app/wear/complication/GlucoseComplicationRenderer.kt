@@ -83,7 +83,7 @@ object GlucoseComplicationRenderer {
             unavailable -> "OOR"
             else -> deltaText(reading, settings.unit)
         }
-        drawCenteredText(canvas, delta, size / 2f, size * 0.84f, paint)
+        drawCenteredText(canvas, delta, size / 2f, size * 0.67f, paint)
         attentionBadge(attention)?.let { drawAttentionDot(canvas, size, it.color) }
         return bitmap
     }

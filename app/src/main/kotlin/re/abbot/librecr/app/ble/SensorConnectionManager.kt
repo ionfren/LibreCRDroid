@@ -25,6 +25,7 @@ import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
+import re.abbot.librecr.app.alarm.StalenessWatchdog
 import re.abbot.librecr.app.wear.WearDataSync
 import re.abbot.librecr.protocol.dataplane.DataFrame
 import re.abbot.librecr.protocol.dataplane.DataPlaneChannel
@@ -771,6 +772,8 @@ class SensorConnectionManager(
                             "interFragment=${secondNotifyTs - firstNotifyTs}ms",
                     )
                     lastGlucoseAt.set(decodedTs)
+                    // Liveness proof for the staleness safety net (usable or not).
+                    StalenessWatchdog.onFreshReading(context)
                     if (awaitingFirstReadingAfterReconnect) {
                         awaitingFirstReadingAfterReconnect = false
                         BleLog.log("manager: first notify after reconnect lifeCount=${r.lifeCount}")

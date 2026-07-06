@@ -292,6 +292,15 @@
     <string name="alarm_channel_name">Alarmes de glycémie</string>
     <string name="alarm_channel_desc">Alarmes de glycémie basse / élevée</string>
 
+    <!-- Staleness safety net: no glucose liveness event for the threshold -->
+    <string name="staleness_channel_name">Alerte lectures manquantes</string>
+    <string name="staleness_channel_desc">Alerte quand les lectures de glycémie n\'arrivent plus</string>
+    <string name="staleness_alert_title">Aucune lecture de glycémie</string>
+    <string name="staleness_alert_detail">Aucune nouvelle lecture depuis %1$d min. Vérifiez la montre ou le capteur.</string>
+    <string name="alarms_staleness_section">Lectures manquantes</string>
+    <string name="alarms_staleness">Alerte lectures manquantes</string>
+    <string name="alarms_staleness_desc">Notifie quand les lectures cessent d\'arriver pendant ~10 minutes. Respecte l\'interrupteur général et les heures actives.</string>
+
     <!-- Live unavailable-reading / lost BLE state: shown instead of a stale value -->
     <string name="sensor_out_of_range">Hors portée</string>
     <string name="sensor_out_of_range_short" translatable="false">OOR</string>
