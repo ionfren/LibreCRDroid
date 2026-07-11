@@ -87,6 +87,7 @@ class LibreWearListenerService : WearableListenerService() {
                 val incoming = ImportedSession.fromJson(String(payload))
                 val shouldStart = path == WearDataSync.PATH_START
                 LibreCR.store.saveSession(incoming, preserveCachedKeyWhenKeyless = true)
+                LibreCR.manager.clearSensorStatus()
                 if (shouldStart) {
                     LibreCR.store.setAutoConnectEnabled(true)
                 } else {
@@ -135,7 +136,6 @@ class LibreWearListenerService : WearableListenerService() {
                 GlucoseLatencyTracer.mark(reading.lifeCount, GlucoseLatencyTracer.Stage.BLE_NOTIFY_RECEIVED, arrivalMs)
                 if (publishLatest) {
                     LibreCR.manager.acceptRemoteGlucose(reading)
-                    GlucoseLatencyTracer.mark(reading.lifeCount, GlucoseLatencyTracer.Stage.STORE_UPDATED)
                     LibreComplicationUpdater.requestAll(this@LibreWearListenerService, reading.lifeCount)
                 }
                 BleLog.log(
@@ -152,7 +152,9 @@ class LibreWearListenerService : WearableListenerService() {
         scope.launch {
             runCatching {
                 val status = WearDataSync.parseSensorStatus(bytes)
-                LibreCR.store.saveSensorStatus(status.errorData, status.patchState, status.observedAtMs)
+                // Publish in memory and queue persistence before notifying/repainting; none of those
+                // live paths waits for DataStore.
+                LibreCR.manager.acceptRemoteSensorStatus(status)
                 SensorAttentionNotifier.onAttentionChanged(this@LibreWearListenerService, status.attention)
                 LibreComplicationUpdater.requestAll(this@LibreWearListenerService)
                 BleLog.log(

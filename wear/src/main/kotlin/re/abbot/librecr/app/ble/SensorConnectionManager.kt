@@ -11,9 +11,7 @@ import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -21,6 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -106,6 +105,9 @@ class SensorConnectionManager(
     private val _glucose = MutableStateFlow<GlucoseUi?>(null)
     val glucose: StateFlow<GlucoseUi?> = _glucose
 
+    private val _sensorStatus = MutableStateFlow<SensorStateStore.SensorStatusSnapshot?>(null)
+    val sensorStatus: StateFlow<SensorStateStore.SensorStatusSnapshot?> = _sensorStatus
+
     private val _statusLine = MutableStateFlow("idle")
     val statusLine: StateFlow<String> = _statusLine
 
@@ -138,27 +140,10 @@ class SensorConnectionManager(
     @Volatile private var lastBackfillRequestFrom: Int? = null
     @Volatile private var lastBackfillRequestAtMs = 0L
 
-    // DataStore persistence runs OFF the decode→ui→send path: a single conflated consumer drains
-    // only the latest reading, so a slow write (Wear doze can stall flash I/O for tens of seconds)
-    // can never block a CGM reading or pile up a backlog. DataStore is now cold-start/persistence only.
-    private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val persistChannel = Channel<SensorStateStore.LastGlucose>(Channel.CONFLATED)
-
-    init {
-        persistScope.launch {
-            for (reading in persistChannel) {
-                val startedAt = System.currentTimeMillis()
-                runCatching { store.saveRemoteGlucose(reading) }
-                    .onFailure { BleLog.log("persist: lc=${reading.lifeCount} save failed: ${it.message}") }
-                val editMs = System.currentTimeMillis() - startedAt
-                if (editMs > PERSIST_SLOW_WARN_MS) {
-                    BleLog.log("[ANOMALY] persist: DataStore edit ${editMs}ms lc=${reading.lifeCount} (off critical path; ui/send unaffected)")
-                } else {
-                    BleLog.log("[PERSIST] DataStore edit ${editMs}ms lc=${reading.lifeCount} (off critical path)")
-                }
-            }
-        }
-    }
+    // DataStore persistence runs OFF the decode→ui→send path: SensorStateStore owns the single
+    // serialized conflated writer (see queueGlucose/queueSensorStatus there), so a slow write
+    // (Wear doze can stall flash I/O for tens of seconds) can never block a CGM reading or pile
+    // up a backlog. DataStore is cold-start/persistence only.
 
     private val adapter by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
@@ -367,8 +352,27 @@ class SensorConnectionManager(
             deltaMgDlPerMin = reading.deltaMgDlPerMin,
         )
         lastSentReading = reading
-        persistChannel.trySend(reading)
+        store.queueGlucose(reading)
         BleLog.log("WATCH_STATE_UPDATED lc=${reading.lifeCount} source=remote")
+    }
+
+    /** Publish relayed patch status in memory before its conflated persistence write. */
+    fun acceptRemoteSensorStatus(status: SensorStateStore.SensorStatusSnapshot) {
+        _sensorStatus.value = status
+        store.queueSensorStatus(status.errorData, status.patchState, status.observedAtMs)
+    }
+
+    /** Cold-start seed; never overwrites a newer status already received on the live path. */
+    fun seedPersistedSensorStatus(status: SensorStateStore.SensorStatusSnapshot?) {
+        if (status == null) return
+        _sensorStatus.update { current ->
+            if (current == null || status.observedAtMs > current.observedAtMs) status else current
+        }
+    }
+
+    /** Session replacement invalidates patch status from the previous provisioning. */
+    fun clearSensorStatus() {
+        _sensorStatus.value = null
     }
 
     /** Publish a non-numeric realtime sensor reading relayed by the phone. */
@@ -766,6 +770,7 @@ class SensorConnectionManager(
         if (normalizeIdentity(session.bleDeviceName) == normalizeIdentity(observedName)) return session
         val updated = session.copy(bleDeviceName = observedName)
         store.saveSession(updated, preserveCachedKeyWhenKeyless = true)
+        clearSensorStatus()
         BleLog.log("manager: cached permanent BLE device name=$observedName for ${session.bleAddress}")
         return updated
     }
@@ -908,8 +913,8 @@ class SensorConnectionManager(
                         //    and 3) refresh complications from the in-memory value.
                         WearDataSync.sendGlucose(context, reading, timeline)
                         LibreComplicationUpdater.requestAll(context, r.lifeCount)
-                        // 4) Persist last — fire-and-forget, conflated, on the dedicated IO consumer.
-                        persistChannel.trySend(reading)
+                        // 4) Persist last — fire-and-forget via the store's single serialized writer.
+                        store.queueGlucose(reading)
                     } else {
                         WearDataSync.sendGlucoseUnavailable(
                             context,
@@ -968,7 +973,14 @@ class SensorConnectionManager(
                         if (statusKey != lastSensorStatus) {
                             lastSensorStatus = statusKey
                             val observedAtMs = System.currentTimeMillis()
-                            store.saveSensorStatus(s.errorData, s.patchState, observedAtMs)
+                            _sensorStatus.value = SensorStateStore.SensorStatusSnapshot(
+                                s.errorData,
+                                s.patchState,
+                                observedAtMs,
+                            )
+                            // Fire-and-forget persist: a stalled DataStore commit must not delay the
+                            // phone relay, the user notification, or the complication repaint below.
+                            store.queueSensorStatus(s.errorData, s.patchState, observedAtMs)
                             WearDataSync.sendSensorStatus(context, s.errorData, s.patchState, observedAtMs)
                             SensorAttentionNotifier.onAttentionChanged(context, s.sensorAttention)
                             LibreComplicationUpdater.requestAll(context)
@@ -1189,7 +1201,6 @@ class SensorConnectionManager(
         /** A backfill request with an equal-or-lower start within this window subsumes a new one. */
         private const val BACKFILL_COALESCE_WINDOW_MS = 60_000L
         private const val HANDSHAKE_WAKE_LOCK_TIMEOUT_MS = 90_000L
-        private const val PERSIST_SLOW_WARN_MS = 1_000L
 
         /** Greppable tag for the whole sensor reconnect / reading-gap narrative on Wear OS. */
         private const val WEAR_BLE_TAG = "[WEAR-BLE]"

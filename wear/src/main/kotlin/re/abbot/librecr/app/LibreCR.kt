@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import re.abbot.librecr.app.ble.SensorConnectionManager
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceStore
+import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.wear.WearDataSync
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
 
@@ -34,6 +35,13 @@ object LibreCR {
         store = SensorStateStore(app)
         manager = SensorConnectionManager(app, store)
         appearance = WearAppearanceStore(app)
+        // Seed patch status off the live path. A delayed DataStore read cannot delay BLE startup,
+        // UI, phone relay or complication requests, and cannot overwrite a newer live snapshot.
+        scope.launch {
+            runCatching { store.loadSensorStatus() }
+                .onSuccess(manager::seedPersistedSensorStatus)
+                .onFailure { BleLog.log("persisted sensor status seed failed: ${it.message}") }
+        }
         scope.launch {
             appearance.settingsFlow
                 .distinctUntilChanged()

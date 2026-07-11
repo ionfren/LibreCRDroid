@@ -112,8 +112,11 @@ private fun WearScreen() {
     // is only the cold-start fallback (before the service has produced a reading this session).
     val live by LibreCR.manager.glucose.collectAsState()
     val persisted by LibreCR.store.lastGlucoseFlow.collectAsState(initial = null)
-    val sensorStatus by LibreCR.store.sensorStatusFlow.collectAsState(initial = null)
+    val liveSensorStatus by LibreCR.manager.sensorStatus.collectAsState()
+    val persistedSensorStatus by LibreCR.store.sensorStatusFlow.collectAsState(initial = null)
     val connectionState by LibreCR.manager.state.collectAsState()
+    // Collection is asynchronous/non-blocking; the live snapshot always wins once available.
+    val sensorStatus = liveSensorStatus ?: persistedSensorStatus
     val attention = sensorStatus?.attention ?: Libre3SensorAttention.None
     val liveUnavailable = live.isActiveGlucoseUnavailable()
     val baseReading = live?.toLastGlucose() ?: persisted
@@ -136,8 +139,8 @@ private fun WearScreen() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { }
 
-    // End of the interactive UI path: Compose now holds the new value and is about to
-    // recompose. The gap to STORE_UPDATED is the DataStore-write → flow-emission round-trip.
+    // End of the interactive in-memory path: Compose now holds the new value and is about to
+    // recompose. This deliberately does not wait for STORE_UPDATED and can be logged before it.
     LaunchedEffect(reading?.lifeCount, reading?.receivedAtMs) {
         reading?.let { GlucoseLatencyTracer.mark(it.lifeCount, GlucoseLatencyTracer.Stage.UI_RENDERED) }
     }

@@ -15,11 +15,10 @@ package re.abbot.librecr.app.log
  *   - `Δprev` — ms since the previous stage that actually fired for this reading,
  *   - `Δnotify` — ms since [Stage.BLE_NOTIFY_RECEIVED] (the end-to-end age).
  *
- * Reading the deltas tells you exactly where a minute went: a large `Δprev` on
- * STORE_UPDATED is DataStore disk latency; a large one on UI_RENDERED is the
- * DataStore→Compose round-trip; a large one on AOD_UPDATED is the OS complication
- * refresh throttle. The two anchors (BLE notify vs. relay arrival) are described
- * per call site.
+ * UI_RENDERED and AOD_UPDATED belong to the live in-memory branch and may legitimately precede
+ * STORE_UPDATED, which is the independent persistence branch. The dedicated `[PERSIST]` lines split
+ * DataStore latency into queued→enteredEdit and enteredEdit→committed; this tracer keeps the wider
+ * BLE/UI/AOD chronology. The two anchors (BLE notify vs. relay arrival) are described per call site.
  */
 object GlucoseLatencyTracer {
     enum class Stage(val label: String) {

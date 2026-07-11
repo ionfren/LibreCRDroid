@@ -36,14 +36,19 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
         // A fresh unavailable live reading shows "OOR"; real sensor errors come from patch-status.
         val live = LibreCR.manager.glucose.value
         val appearance = LibreCR.appearance.current()
-        val status = LibreCR.store.loadSensorStatus()
+        val status = LibreCR.manager.sensorStatus.value
+            ?: if (live == null) LibreCR.store.loadSensorStatus() else null
         val attention = status?.attention ?: Libre3SensorAttention.None
         val sensorError = attention != Libre3SensorAttention.None
         val liveUnavailable = live.isActiveGlucoseUnavailable()
-        val reading = if (sensorError || liveUnavailable) null else live?.toLastGlucose() ?: LibreCR.store.loadLastGlucose()
+        val reading = when {
+            sensorError || liveUnavailable -> null
+            live != null -> live.toLastGlucose()
+            else -> LibreCR.store.loadLastGlucose()
+        }
         val unavailable = !sensorError && (liveUnavailable || !GlucoseComplicationRenderer.isFresh(reading))
         // The OS asked us for fresh complication data — i.e. the watch face / AOD is about
-        // to repaint with this reading. Gap to STORE_UPDATED is the complication-refresh throttle.
+        // to repaint from live memory. This may legitimately happen before STORE_UPDATED.
         reading?.let { GlucoseLatencyTracer.mark(it.lifeCount, GlucoseLatencyTracer.Stage.AOD_UPDATED) }
         BleLog.log("WATCH_COMPLICATION_REQUEST lc=${reading?.lifeCount ?: -1} sensorError=$sensorError unavailable=$unavailable service=AgeDeltaComplicationService type=${request.complicationType}")
         return buildData(

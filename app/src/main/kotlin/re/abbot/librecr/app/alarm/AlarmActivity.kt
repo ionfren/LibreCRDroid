@@ -56,6 +56,9 @@ class AlarmActivity : ComponentActivity() {
             finish()
             return
         }
+        GlucoseAlarmManager.markDirectLaunchPresented(
+            intent.getLongExtra(GlucoseAlarmManager.EXTRA_DIRECT_LAUNCH_TOKEN, 0L),
+        )
         val mgDl = intent.getIntExtra(GlucoseAlarmManager.EXTRA_MGDL, 0)
         val unit = GlucoseUnit.fromName(intent.getStringExtra(GlucoseAlarmManager.EXTRA_UNIT))
         val snoozeMin = intent.getIntExtra(GlucoseAlarmManager.EXTRA_SNOOZE_MIN, 30)

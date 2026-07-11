@@ -2,6 +2,7 @@ package re.abbot.librecr.app.alarm
 
 import android.app.Notification
 import android.app.NotificationChannel
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -9,6 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.data.AlarmSettings
 import re.abbot.librecr.app.data.GlucoseUnit
@@ -16,6 +20,7 @@ import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.stats.GlucoseSample
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Owns alarm firing + snooze state for the whole process. The foreground service funnels every
@@ -31,11 +36,15 @@ object GlucoseAlarmManager {
     const val EXTRA_MGDL = "re.abbot.librecr.app.alarm.MGDL"
     const val EXTRA_UNIT = "re.abbot.librecr.app.alarm.UNIT"
     const val EXTRA_SNOOZE_MIN = "re.abbot.librecr.app.alarm.SNOOZE_MIN"
+    const val EXTRA_DIRECT_LAUNCH_TOKEN = "re.abbot.librecr.app.alarm.DIRECT_LAUNCH_TOKEN"
     const val ACTION_SNOOZE = "re.abbot.librecr.app.alarm.SNOOZE"
     const val ACTION_STOP = "re.abbot.librecr.app.alarm.STOP"
 
     private val snoozedUntil = ConcurrentHashMap<AlarmKind, Long>()
+    private val launchTokens = AtomicLong()
+    private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var firing: AlarmKind? = null
+    @Volatile private var pendingDirectLaunchToken = 0L
     /** Channel creation is idempotent; skip the per-reading binder round-trip after the first check. */
     @Volatile private var channelEnsured = false
 
@@ -85,12 +94,21 @@ object GlucoseAlarmManager {
     fun snooze(context: Context, kind: AlarmKind, minutes: Int) {
         snoozedUntil[kind] = System.currentTimeMillis() + minutes * 60_000L
         firing = null
+        pendingDirectLaunchToken = 0L
         cancel(context)
     }
 
     fun stop(context: Context, kind: AlarmKind) {
         firing = kind
+        pendingDirectLaunchToken = 0L
         cancel(context)
+    }
+
+    fun markDirectLaunchPresented(token: Long) {
+        if (token != 0L && pendingDirectLaunchToken == token) {
+            pendingDirectLaunchToken = 0L
+            BleLog.log("alarm direct launch confirmed token=$token")
+        }
     }
 
     /** Fire a sample LOW alarm so the user can preview the full-screen experience. */
@@ -152,20 +170,62 @@ object GlucoseAlarmManager {
                 ).build(),
             )
             .build()
-        runCatching { notificationManager(app).notify(NOTIF_ID, notification) }
-            .onSuccess { BleLog.log("alarm notification posted kind=$kind mgdl=$mgDl") }
-            .onFailure { BleLog.log("alarm notify FAILED: ${it.message}") }
-        // A full-screen intent only auto-launches when the screen is off/locked; with the screen ON
-        // showing our own UI (the landscape standby clock is the common case) Android downgrades it
-        // to a heads-up. Also try a direct launch: it succeeds whenever the app is in the foreground
-        // and is silently discarded by the OS when backgrounded — the notification stays the fallback.
-        runCatching { app.startActivity(full) }
-            .onSuccess { BleLog.log("alarm direct launch attempted kind=$kind") }
-            .onFailure { BleLog.log("alarm direct launch failed: ${it.message}") }
+        // On an unlocked, interactive phone a high-importance full-screen notification becomes a
+        // heads-up. Launch the alarm screen first and only post the notification if that launch is
+        // not confirmed; this avoids showing both a popup and the full-screen alarm.
+        if (isUnlockedAndInteractive(app) && launchDirectly(app, full, kind, notification)) return
+        postNotification(app, notification, kind, mgDl)
     }
 
     private fun cancel(context: Context) {
         notificationManager(context.applicationContext).cancel(NOTIF_ID)
+    }
+
+    private fun launchDirectly(
+        app: Context,
+        full: Intent,
+        kind: AlarmKind,
+        fallbackNotification: Notification,
+    ): Boolean {
+        val token = launchTokens.incrementAndGet()
+        val directIntent = Intent(full).putExtra(EXTRA_DIRECT_LAUNCH_TOKEN, token)
+        pendingDirectLaunchToken = token
+        val launched = runCatching { app.startActivity(directIntent) }
+            .onSuccess { BleLog.log("alarm direct launch attempted kind=$kind token=$token") }
+            .onFailure { BleLog.log("alarm direct launch failed: ${it.message}") }
+            .isSuccess
+        if (!launched) {
+            if (pendingDirectLaunchToken == token) pendingDirectLaunchToken = 0L
+            return false
+        }
+        mainHandler.postDelayed({
+            if (pendingDirectLaunchToken == token && firing == kind) {
+                pendingDirectLaunchToken = 0L
+                BleLog.log("alarm direct launch not confirmed; posting notification fallback kind=$kind")
+                postNotification(app, fallbackNotification, kind, null)
+            }
+        }, DIRECT_LAUNCH_FALLBACK_DELAY_MS)
+        return true
+    }
+
+    private fun postNotification(app: Context, notification: Notification, kind: AlarmKind, mgDl: Int?) {
+        runCatching { notificationManager(app).notify(NOTIF_ID, notification) }
+            .onSuccess {
+                val suffix = if (mgDl != null) " mgdl=$mgDl" else ""
+                BleLog.log("alarm notification posted kind=$kind$suffix")
+            }
+            .onFailure { BleLog.log("alarm notify FAILED: ${it.message}") }
+    }
+
+    private fun isUnlockedAndInteractive(context: Context): Boolean {
+        val app = context.applicationContext
+        val interactive = runCatching {
+            (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
+        }.getOrDefault(false)
+        val locked = runCatching {
+            (app.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
+        }.getOrDefault(true)
+        return interactive && !locked
     }
 
     private fun ensureChannel(context: Context) {
@@ -207,6 +267,8 @@ object GlucoseAlarmManager {
         AlarmKind.PERSISTENT_HIGH -> R.string.alarm_title_persistent_high
         AlarmKind.PERSISTENT_LOW -> R.string.alarm_title_persistent_low
     }
+
+    private const val DIRECT_LAUNCH_FALLBACK_DELAY_MS = 1_500L
 }
 
 /** Handles the Snooze/Stop buttons on the alarm notification. */
