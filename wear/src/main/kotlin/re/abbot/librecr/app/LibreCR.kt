@@ -35,6 +35,7 @@ object LibreCR {
         store = SensorStateStore(app)
         manager = SensorConnectionManager(app, store)
         appearance = WearAppearanceStore(app)
+        WearDataSync.initializePeerState(app)
         // Seed patch status off the live path. A delayed DataStore read cannot delay BLE startup,
         // UI, phone relay or complication requests, and cannot overwrite a newer live snapshot.
         scope.launch {

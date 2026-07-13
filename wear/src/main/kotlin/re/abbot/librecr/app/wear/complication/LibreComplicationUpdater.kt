@@ -2,6 +2,7 @@ package re.abbot.librecr.app.wear.complication
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 import re.abbot.librecr.app.log.BleLog
 
@@ -19,7 +20,11 @@ object LibreComplicationUpdater {
                 context = context.applicationContext,
                 complicationDataSourceComponent = ComponentName(context, serviceClass),
             ).requestUpdateAll()
-            BleLog.log("WATCH_COMPLICATION_UPDATE_REQUESTED lc=${lifeCount ?: -1} service=${serviceClass.simpleName}")
+            val route = if (Build.VERSION.SDK_INT >= 36) "WEAR_SDK" else "LEGACY_BROADCAST"
+            BleLog.log(
+                "COMPLICATION_UPDATE_REQUESTED lc=${lifeCount ?: -1} " +
+                    "service=${serviceClass.simpleName} route=$route",
+            )
         }.onFailure {
             BleLog.log("complication: update request failed for ${serviceClass.simpleName}: ${it.message ?: it::class.java.simpleName}")
         }

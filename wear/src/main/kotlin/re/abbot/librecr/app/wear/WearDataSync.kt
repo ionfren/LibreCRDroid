@@ -40,7 +40,10 @@ object WearDataSync {
     private val pendingStopAck = AtomicReference<CompletableDeferred<Boolean>?>(null)
     private val glucoseBufferLock = Any()
     private val glucoseBuffer = LinkedHashMap<Int, BufferedGlucose>()
-    @Volatile private var retryLoopStarted = false
+    private var retryLoopStarted = false
+    private var peerAvailability = PeerAvailability.UNKNOWN
+    private var peerProbeInFlight = false
+    private var peerStateGeneration = 0L
 
     data class ReplayRequest(
         val fromLifeCount: Int,
@@ -116,15 +119,22 @@ object WearDataSync {
     fun sendGlucose(context: Context, reading: SensorStateStore.LastGlucose, timeline: GlucoseTimeline? = null) {
         val app = context.applicationContext
         rememberGlucose(reading, timeline)
-        ensureRetryLoop(app)
-        sendBufferedGlucose(
-            context = app,
-            lifeCount = reading.lifeCount,
-            messagePath = PATH_GLUCOSE,
-            reason = "live",
-            latestDataItem = true,
-            replayDataItem = false,
-        )
+        val peer = currentPeerAvailability()
+        val canSend = GlucoseDeliveryPolicy.shouldAttemptTransport(peer)
+        if (canSend) {
+            sendBufferedGlucose(
+                context = app,
+                lifeCount = reading.lifeCount,
+                messagePath = PATH_GLUCOSE,
+                reason = "live",
+                latestDataItem = true,
+                replayDataItem = false,
+            )
+            ensureRetryLoop(app)
+        } else {
+            BleLog.log("WATCH_RELAY_PAUSED lc=${reading.lifeCount} peer=$peer buffered=true")
+            if (peer == PeerAvailability.UNKNOWN) probePeerAvailability(app, "first_glucose")
+        }
     }
 
     /**
@@ -136,7 +146,12 @@ object WearDataSync {
     fun sendBackfilledGlucose(context: Context, reading: SensorStateStore.LastGlucose) {
         val app = context.applicationContext
         rememberGlucose(reading, null)
-        ensureRetryLoop(app)
+        val peer = currentPeerAvailability()
+        if (!GlucoseDeliveryPolicy.shouldAttemptTransport(peer)) {
+            BleLog.log("WATCH_RELAY_PAUSED lc=${reading.lifeCount} peer=$peer backfillBuffered=true")
+            if (peer == PeerAvailability.UNKNOWN) probePeerAvailability(app, "backfill")
+            return
+        }
         sendBufferedGlucose(
             context = app,
             lifeCount = reading.lifeCount,
@@ -148,6 +163,13 @@ object WearDataSync {
     }
 
     fun sendGlucoseUnavailable(context: Context, event: GlucoseUnavailable) {
+        val app = context.applicationContext
+        val peer = currentPeerAvailability()
+        if (!GlucoseDeliveryPolicy.shouldAttemptTransport(peer)) {
+            BleLog.log("WATCH_RELAY_PAUSED lc=${event.lifeCount} peer=$peer unavailableEvent=true")
+            if (peer == PeerAvailability.UNKNOWN) probePeerAvailability(app, "glucose_unavailable")
+            return
+        }
         val payload = JSONObject()
             .put("lifeCount", event.lifeCount)
             .put("trend", event.trend)
@@ -157,8 +179,8 @@ object WearDataSync {
             .toString()
             .toByteArray()
         BleLog.log("wear: sending glucose unavailable lc=${event.lifeCount} reason=${event.reason}")
-        sendToNearbyNodes(context, PATH_GLUCOSE_UNAVAILABLE, payload)
-        putDataItem(context, PATH_GLUCOSE_UNAVAILABLE, payload, event.lifeCount)
+        sendToNearbyNodes(app, PATH_GLUCOSE_UNAVAILABLE, payload)
+        putDataItem(app, PATH_GLUCOSE_UNAVAILABLE, payload, event.lifeCount)
     }
 
     fun parseGlucose(bytes: ByteArray): SensorStateStore.LastGlucose {
@@ -270,6 +292,20 @@ object WearDataSync {
         BleLog.log("ACK lc=$lifeCount pendingRemoved=${removed != null}")
     }
 
+    /** Resolve the initial state once; subsequent changes are event-driven by the listener service. */
+    fun initializePeerState(context: Context) {
+        probePeerAvailability(context.applicationContext, "process_init")
+    }
+
+    /** An incoming message proves that a companion route currently exists. */
+    fun notePeerActivity() {
+        synchronized(glucoseBufferLock) {
+            peerStateGeneration += 1L
+            peerAvailability = PeerAvailability.CONNECTED
+            peerProbeInFlight = false
+        }
+    }
+
     fun replayGlucoseRange(context: Context, request: ReplayRequest) {
         val app = context.applicationContext
         val lifeCounts = synchronized(glucoseBufferLock) {
@@ -293,6 +329,100 @@ object WearDataSync {
         }
     }
 
+    /**
+     * A peer reconnection is a better retry trigger than a permanent timer. Send only the newest
+     * buffered reading as a live value; the phone detects any life-count gap and asks for the exact
+     * missing range through [PATH_GLUCOSE_REPLAY_REQUEST].
+     */
+    fun onPeerConnected(context: Context) {
+        notePeerActivity()
+        sendNewestBuffered(context.applicationContext, "peer_connected")
+    }
+
+    fun onPeerDisconnected(peerId: String) {
+        synchronized(glucoseBufferLock) {
+            peerStateGeneration += 1L
+            peerAvailability = PeerAvailability.DISCONNECTED
+            peerProbeInFlight = false
+        }
+        BleLog.log("WATCH_PEER_DISCONNECTED peer=$peerId relayPaused=true")
+    }
+
+    private fun sendNewestBuffered(context: Context, reason: String) {
+        val latestLifeCount = synchronized(glucoseBufferLock) {
+            val latest = glucoseBuffer.values.maxByOrNull { it.reading.lifeCount } ?: return@synchronized null
+            latest.attempts = 0
+            latest.lastSentAtMs = 0L
+            latest.reading.lifeCount
+        } ?: return
+        BleLog.log("wear: $reason; retrying newest buffered glucose lc=$latestLifeCount")
+        sendBufferedGlucose(
+            context = context.applicationContext,
+            lifeCount = latestLifeCount,
+            messagePath = PATH_GLUCOSE,
+            reason = reason,
+            latestDataItem = false,
+            replayDataItem = false,
+        )
+        ensureRetryLoop(context.applicationContext)
+    }
+
+    private fun currentPeerAvailability(): PeerAvailability = synchronized(glucoseBufferLock) {
+        peerAvailability
+    }
+
+    private fun probePeerAvailability(context: Context, reason: String) {
+        val generation = synchronized(glucoseBufferLock) {
+            if (peerAvailability != PeerAvailability.UNKNOWN || peerProbeInFlight) return
+            peerProbeInFlight = true
+            peerStateGeneration
+        }
+        runCatching {
+            Wearable.getNodeClient(context).connectedNodes
+                .addOnSuccessListener { nodes ->
+                    val accepted = synchronized(glucoseBufferLock) {
+                        if (generation != peerStateGeneration) return@synchronized false
+                        peerProbeInFlight = false
+                        peerAvailability = if (nodes.isEmpty()) {
+                            PeerAvailability.DISCONNECTED
+                        } else {
+                            PeerAvailability.CONNECTED
+                        }
+                        true
+                    }
+                    if (!accepted) return@addOnSuccessListener
+                    BleLog.log(
+                        "WATCH_PEER_PROBE reason=$reason state=${currentPeerAvailability()} " +
+                            "nodes=${nodes.size}",
+                    )
+                    if (nodes.isNotEmpty()) sendNewestBuffered(context, "peer_probe")
+                }
+                .addOnFailureListener { failure ->
+                    val accepted = synchronized(glucoseBufferLock) {
+                        if (generation == peerStateGeneration) {
+                            peerProbeInFlight = false
+                            peerAvailability = PeerAvailability.DISCONNECTED
+                            true
+                        } else false
+                    }
+                    if (accepted) {
+                        BleLog.log("WATCH_PEER_PROBE reason=$reason failed=${failure.message} relayPaused=true")
+                    }
+                }
+        }.onFailure { failure ->
+            val accepted = synchronized(glucoseBufferLock) {
+                if (generation == peerStateGeneration) {
+                    peerProbeInFlight = false
+                    peerAvailability = PeerAvailability.DISCONNECTED
+                    true
+                } else false
+            }
+            if (accepted) {
+                BleLog.log("WATCH_PEER_PROBE reason=$reason unavailable=${failure.message} relayPaused=true")
+            }
+        }
+    }
+
     private fun rememberGlucose(reading: SensorStateStore.LastGlucose, timeline: GlucoseTimeline?) {
         synchronized(glucoseBufferLock) {
             glucoseBuffer.remove(reading.lifeCount)
@@ -312,7 +442,9 @@ object WearDataSync {
         // unsynchronized fast-path: that could race the loop stopping itself (below) and leave a
         // pending reading with no running retry loop.
         synchronized(glucoseBufferLock) {
-            if (retryLoopStarted) return
+            if (retryLoopStarted ||
+                !GlucoseDeliveryPolicy.shouldAttemptTransport(peerAvailability)
+            ) return
             retryLoopStarted = true
         }
         val app = context.applicationContext
@@ -320,7 +452,9 @@ object WearDataSync {
             while (true) {
                 delay(GLUCOSE_RETRY_INTERVAL_MS)
                 val due = synchronized(glucoseBufferLock) {
-                    if (glucoseBuffer.isEmpty()) {
+                    if (glucoseBuffer.isEmpty() ||
+                        !GlucoseDeliveryPolicy.shouldAttemptTransport(peerAvailability)
+                    ) {
                         // Everything acked → stop waking every interval. The next sendGlucose/replay
                         // restarts the loop via ensureRetryLoop (same lock, so no lost wakeup).
                         retryLoopStarted = false
@@ -353,6 +487,10 @@ object WearDataSync {
         latestDataItem: Boolean,
         replayDataItem: Boolean,
     ) {
+        if (!GlucoseDeliveryPolicy.shouldAttemptTransport(currentPeerAvailability())) {
+            BleLog.log("WATCH_RELAY_PAUSED lc=$lifeCount reason=$reason sendSuppressed=true")
+            return
+        }
         val snapshot = nextSendSnapshot(lifeCount) ?: run {
             BleLog.log("wear: glucose replay unavailable lc=$lifeCount reason=$reason")
             return
@@ -445,7 +583,13 @@ object WearDataSync {
                 nodeClient.connectedNodes
                     .addOnSuccessListener { nodes ->
                         if (nodes.isEmpty()) {
-                            BleLog.log("[ANOMALY] wear: no connected Wear node for $path; DataItem/retry buffer remain active")
+                            onPeerDisconnected("none:$path")
+                            BleLog.log(
+                                "wear: no connected Wear node for $path; local display unaffected, " +
+                                    "relay paused and buffer retained",
+                            )
+                        } else {
+                            notePeerActivity()
                         }
                         nodes.forEach { node ->
                             messageClient.sendMessage(node.id, path, payload)

@@ -50,7 +50,19 @@ class TrendAboveValueComplicationService : SuspendingComplicationDataSourceServi
         // The OS asked us for fresh complication data — i.e. the watch face / AOD is about
         // to repaint from live memory. This may legitimately happen before STORE_UPDATED.
         reading?.let { GlucoseLatencyTracer.mark(it.lifeCount, GlucoseLatencyTracer.Stage.AOD_UPDATED) }
-        BleLog.log("WATCH_COMPLICATION_REQUEST lc=${reading?.lifeCount ?: -1} sensorError=$sensorError unavailable=$unavailable service=TrendAboveValueComplicationService type=${request.complicationType}")
+        val returnedValue = when {
+            sensorError -> "SENSOR_ERROR"
+            unavailable -> "OOR"
+            else -> reading?.mgDL?.toString() ?: "NONE"
+        }
+        BleLog.log(
+            "COMPLICATION_DATA_READ lc=${reading?.lifeCount ?: live?.lifeCount ?: -1} " +
+                "source=${if (live != null) "LIVE_CACHE" else "DATASTORE"} " +
+                "value=$returnedValue timestampMs=${live?.receivedAtMs ?: reading?.receivedAtMs ?: 0L} " +
+                "service=TrendAboveValueComplicationService " +
+                "instanceId=${request.complicationInstanceId} type=${request.complicationType} " +
+                "immediate=${request.immediateResponseRequired}",
+        )
         return buildData(request.complicationType, reading, tapAction(), appearance, attention, sensorError, unavailable)
     }
 

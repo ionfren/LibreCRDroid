@@ -3,6 +3,7 @@ package re.abbot.librecr.app.wear
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.MessageEvent
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,7 @@ class LibreWearListenerService : WearableListenerService() {
     }
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
+        WearDataSync.notePeerActivity()
         when (messageEvent.path) {
             WearDataSync.PATH_SESSION,
             WearDataSync.PATH_START -> receiveSession(messageEvent)
@@ -46,6 +48,16 @@ class LibreWearListenerService : WearableListenerService() {
             WearDataSync.PATH_LOG_REQUEST -> sendLog()
             else -> super.onMessageReceived(messageEvent)
         }
+    }
+
+    override fun onPeerConnected(peer: Node) {
+        super.onPeerConnected(peer)
+        WearDataSync.onPeerConnected(this)
+    }
+
+    override fun onPeerDisconnected(peer: Node) {
+        WearDataSync.onPeerDisconnected(peer.id)
+        super.onPeerDisconnected(peer)
     }
 
     override fun onDataChanged(dataEvents: DataEventBuffer) {
