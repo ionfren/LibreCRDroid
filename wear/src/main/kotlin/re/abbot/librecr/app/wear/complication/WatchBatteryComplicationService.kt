@@ -12,14 +12,13 @@ import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
-import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.log.BleLog
 import kotlin.math.roundToInt
 
-class WatchBatteryComplicationService : SuspendingComplicationDataSourceService() {
+class WatchBatteryComplicationService : TrackedComplicationDataSourceService() {
     override fun onCreate() {
         super.onCreate()
         LibreCR.init(this)
@@ -28,7 +27,7 @@ class WatchBatteryComplicationService : SuspendingComplicationDataSourceService(
     override fun getPreviewData(type: ComplicationType): ComplicationData =
         buildData(type, BatterySnapshot(percent = 78, charging = false, full = false), null)
 
-    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
+    override suspend fun onTrackedComplicationRequest(request: ComplicationRequest): ComplicationData {
         val snapshot = readBatterySnapshot()
         BleLog.log("WATCH_COMPLICATION_REQUEST battery=${snapshot.percent} charging=${snapshot.charging} full=${snapshot.full} service=WatchBatteryComplicationService type=${request.complicationType}")
         return buildData(request.complicationType, snapshot, tapAction())

@@ -73,10 +73,10 @@ class SensorForegroundService : Service() {
                     LibreCR.manager.state,
                 ) { glucose, settings, state -> Triple(glucose, settings.unit, state) }.collectLatest { (g, unit, state) ->
                     val text = when {
-                        g == null && state.isUnavailableForGlucoseDisplay() -> getString(R.string.sensor_out_of_range)
+                        g == null && state.isUnavailableForGlucoseDisplay() -> getString(R.string.sensor_error)
                         g == null -> "no reading yet"
-                        !g.usable -> getString(R.string.sensor_out_of_range)
-                        state.isUnavailableForGlucoseDisplay() && !isFreshGlucose(g.receivedAtMs) -> getString(R.string.sensor_out_of_range)
+                        !g.usable -> getString(R.string.sensor_error)
+                        state.isUnavailableForGlucoseDisplay() && !isFreshGlucose(g.receivedAtMs) -> getString(R.string.sensor_error)
                         g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
                         else -> "no reading yet"
                     }

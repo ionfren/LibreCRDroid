@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
+import re.abbot.librecr.app.R
 import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.log.BleLog
 
@@ -67,10 +68,10 @@ class SensorForegroundService : Service() {
                     LibreCR.manager.state,
                 ) { g, appearance, state -> Triple(g, appearance.unit, state) }.collectLatest { (g, unit, state) ->
                     val text = when {
-                        g == null && state.isUnavailableForDisplay() -> "out of range"
+                        g == null && state.isUnavailableForDisplay() -> getString(R.string.sensor_error)
                         g == null -> "no reading yet"
-                        !g.usable -> "out of range"
-                        state.isUnavailableForDisplay() && !isFresh(g.receivedAtMs) -> "out of range"
+                        !g.usable -> getString(R.string.sensor_error)
+                        state.isUnavailableForDisplay() && !isFresh(g.receivedAtMs) -> getString(R.string.sensor_error)
                         g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
                         else -> "no reading yet"
                     }

@@ -30,6 +30,7 @@ import re.abbot.librecr.app.log.GlucoseLatencyTracer
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.wear.WearDataSync
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
+import re.abbot.librecr.app.wear.complication.StaleRepaintScheduler
 import re.abbot.librecr.protocol.dataplane.DataFrame
 import re.abbot.librecr.protocol.dataplane.DataPlaneChannel
 import re.abbot.librecr.protocol.dataplane.DataPlaneCrypto
@@ -353,6 +354,7 @@ class SensorConnectionManager(
         )
         lastSentReading = reading
         store.queueGlucose(reading)
+        StaleRepaintScheduler.armFrom(context, reading.receivedAtMs)
         BleLog.log("WATCH_STATE_UPDATED lc=${reading.lifeCount} source=remote")
     }
 
@@ -913,6 +915,7 @@ class SensorConnectionManager(
                         //    and 3) refresh complications from the in-memory value.
                         WearDataSync.sendGlucose(context, reading, timeline)
                         LibreComplicationUpdater.requestAll(context, r.lifeCount)
+                        StaleRepaintScheduler.armFrom(context, decodedTs)
                         // 4) Persist last — fire-and-forget via the store's single serialized writer.
                         store.queueGlucose(reading)
                     } else {

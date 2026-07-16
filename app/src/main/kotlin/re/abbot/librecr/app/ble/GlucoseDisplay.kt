@@ -10,7 +10,7 @@ internal enum class GlucoseDisplayStatus { NORMAL, OUT_OF_RANGE, SENSOR_ERROR }
 
 /**
  * The connection is between readings (scanning / connecting / handshaking / reconnecting / error),
- * so there is no live value to show — the UI should surface "out of range" instead of a stale one.
+ * so there is no live value to show — the UI should surface a sensor error instead of a stale one.
  */
 internal fun ConnectionState.isUnavailableForGlucoseDisplay(): Boolean =
     this == ConnectionState.SCANNING ||

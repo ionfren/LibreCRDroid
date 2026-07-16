@@ -77,7 +77,7 @@ class AodGlucoseOverlayService : AccessibilityService() {
                 return local?.copy(mgDL = null, usable = false)
                     ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }?.copy(mgDL = null, usable = false)
             }
-            // A fresh unavailable live reading is the newest glucose state: render "OOR" instead of
+            // A fresh unavailable live reading is the newest glucose state: render "S.E." instead of
             // falling back to the older stored value.
             if (local.isActiveGlucoseUnavailable()) return local?.copy(mgDL = null)
             return local?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
@@ -593,7 +593,7 @@ private class AodGlucoseView(
     private fun primaryText(): String =
         reading?.mgDL?.let { glucoseUnit.format(it) } ?: when (displayStatus) {
             GlucoseDisplayStatus.SENSOR_ERROR -> context.getString(R.string.sensor_error_short)
-            GlucoseDisplayStatus.OUT_OF_RANGE -> context.getString(R.string.sensor_out_of_range_short)
+            GlucoseDisplayStatus.OUT_OF_RANGE -> context.getString(R.string.sensor_error_short)
             GlucoseDisplayStatus.NORMAL -> "--"
         }
 
