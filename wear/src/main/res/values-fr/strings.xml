@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complication_age_delta">Temps + delta/min</string>
+    <string name="complication_trend_above_value">Tendance au-dessus de la valeur</string>
+    <string name="sensor_error">Erreur capteur</string>
+</resources>
