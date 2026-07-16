@@ -8,12 +8,11 @@ import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.TimeFormatComplicationText
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
-import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
 import re.abbot.librecr.app.log.BleLog
 
-class DateComplicationService : SuspendingComplicationDataSourceService() {
+class DateComplicationService : TrackedComplicationDataSourceService() {
     override fun onCreate() {
         super.onCreate()
         LibreCR.init(this)
@@ -22,7 +21,7 @@ class DateComplicationService : SuspendingComplicationDataSourceService() {
     override fun getPreviewData(type: ComplicationType): ComplicationData =
         buildData(tapAction = null)
 
-    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
+    override suspend fun onTrackedComplicationRequest(request: ComplicationRequest): ComplicationData {
         BleLog.log("WATCH_COMPLICATION_REQUEST service=DateComplicationService type=${request.complicationType}")
         return buildData(tapAction())
     }

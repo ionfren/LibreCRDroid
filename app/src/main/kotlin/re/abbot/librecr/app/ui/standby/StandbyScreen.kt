@@ -107,7 +107,7 @@ fun StandbyScreen(
     val attention = sensorStatus?.attention ?: Libre3SensorAttention.None
     val hasSensorAttention = attention != Libre3SensorAttention.None
     val liveUnavailable = local.isActiveGlucoseUnavailable(now)
-    // A fresh unavailable live reading is the newest glucose state: show "OOR" instead of falling
+    // A fresh unavailable live reading is the newest glucose state: show "S.E." instead of falling
     // back to the older stored value. Real sensor errors still come from patch-status attention.
     val glucose = when {
         hasSensorAttention -> local?.copy(mgDL = null)
@@ -310,7 +310,7 @@ private fun StandbyGlucosePanel(
     val value = when {
         glucose == null -> stringResource(R.string.standby_no_reading)
         glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.SENSOR_ERROR -> stringResource(R.string.sensor_error_short)
-        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> stringResource(R.string.sensor_out_of_range_short)
+        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> stringResource(R.string.sensor_error_short)
         glucose.mgDL == null -> stringResource(R.string.standby_no_reading)
         else -> settings.unit.format(glucose.mgDL)
     }

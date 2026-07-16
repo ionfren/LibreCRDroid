@@ -21,7 +21,7 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 object GlucoseComplicationRenderer {
-    private const val STALE_AFTER_MS = 6 * 60_000L
+    const val STALE_AFTER_MS = 6 * 60_000L
     private const val TIMESTAMP_TEXT_SCALE = 0.66f
     private val COLOR_ERROR = 0xFFE53935.toInt()
     private val COLOR_WARN = 0xFFFFB300.toInt()
@@ -40,7 +40,7 @@ object GlucoseComplicationRenderer {
         formatDelta(reading?.deltaMgDlPerMin, unit)
 
     fun valueText(reading: SensorStateStore.LastGlucose?, unit: GlucoseUnit = GlucoseUnit.MG_DL): String =
-        if (isFresh(reading)) reading?.mgDL?.let { unit.format(it) } ?: "OOR" else "OOR"
+        if (isFresh(reading)) reading?.mgDL?.let { unit.format(it) } ?: "S.E." else "S.E."
 
     fun buildAgeDeltaBitmap(
         context: Context,
@@ -80,7 +80,7 @@ object GlucoseComplicationRenderer {
         paint.textSize = size * 0.36f
         val delta = when {
             sensorError -> "--"
-            unavailable -> "OOR"
+            unavailable -> "--"
             else -> deltaText(reading, settings.unit)
         }
         drawCenteredText(canvas, delta, size / 2f, size * 0.62f, paint)
@@ -116,7 +116,7 @@ object GlucoseComplicationRenderer {
         paint.strokeWidth = 0f
         val centerText = when {
             sensorError -> "S.E."
-            unavailable -> "OOR"
+            unavailable -> "S.E."
             !fresh && badge != null -> badge.shortText
             else -> valueText(reading, settings.unit)
         }
@@ -169,6 +169,7 @@ object GlucoseComplicationRenderer {
         }
 
     fun contentDescription(
+        context: Context,
         label: String,
         reading: SensorStateStore.LastGlucose?,
         attention: Libre3SensorAttention = Libre3SensorAttention.None,
@@ -177,8 +178,7 @@ object GlucoseComplicationRenderer {
         unavailable: Boolean = false,
     ): String {
         val base = when {
-            sensorError -> "$label sensor error"
-            unavailable -> "$label out of range"
+            sensorError || unavailable -> "$label ${context.getString(R.string.sensor_error)}"
             reading != null ->
                 "$label ${unit.formatWithUnit(reading.mgDL)} ${trendLabel(reading.trend)} ${timeText(reading)} ${deltaText(reading, unit)}"
             else -> "$label no glucose"

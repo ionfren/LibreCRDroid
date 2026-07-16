@@ -210,8 +210,8 @@ private fun WearReadingLayout(
     ) {
         Text(
             text = when {
-                displayStatus == WearGlucoseDisplayStatus.SENSOR_ERROR -> "SE"
-                displayStatus == WearGlucoseDisplayStatus.OUT_OF_RANGE -> "OOR"
+                displayStatus == WearGlucoseDisplayStatus.SENSOR_ERROR -> "S.E."
+                displayStatus == WearGlucoseDisplayStatus.OUT_OF_RANGE -> "S.E."
                 mgDl != null -> appearance.unit.format(mgDl)
                 else -> "--"
             },

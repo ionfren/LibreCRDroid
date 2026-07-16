@@ -58,7 +58,7 @@ object LiveUpdatesNotifier {
     ) {
         val app = context.applicationContext
         val settings = state.settings
-        // A fresh unavailable live reading is the newest glucose state: surface "out of range"
+        // A fresh unavailable live reading is the newest glucose state: surface a sensor error
         // instead of keeping the previous value on the lock screen.
         val unavailable = settings.enabled && state.unavailableAtMs?.let { isFreshGlucose(it) } == true
         if (unavailable) {
@@ -93,7 +93,7 @@ object LiveUpdatesNotifier {
         )
         val sensorLabel = sensorProgress(state).label(context)
         val builder = Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle(context.getString(R.string.sensor_out_of_range))
+            .setContentTitle(context.getString(R.string.sensor_error))
             .setSubText(sensorLabel)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setCategory(Notification.CATEGORY_STATUS)
@@ -104,7 +104,7 @@ object LiveUpdatesNotifier {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(contentIntent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA && state.settings.statusChipEnabled) {
-            builder.setShortCriticalText(context.getString(R.string.sensor_out_of_range_short))
+            builder.setShortCriticalText(context.getString(R.string.sensor_error_short))
         }
         return builder.build()
     }

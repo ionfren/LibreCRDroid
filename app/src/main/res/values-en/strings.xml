@@ -301,11 +301,7 @@
     <string name="alarms_staleness">Missing-readings alert</string>
     <string name="alarms_staleness_desc">Notifies when readings stop arriving for ~10 minutes. Follows the master switch and active hours.</string>
 
-    <!-- Live unavailable-reading / lost BLE state: shown instead of a stale value -->
-    <string name="sensor_out_of_range">Out of range</string>
-    <string name="sensor_out_of_range_short" translatable="false">OOR</string>
-
-    <!-- Patch-status sensor error: shown only when the sensor reports a real attention/error state -->
+    <!-- Sensor error: also shown when a live reading is unavailable instead of keeping a stale value -->
     <string name="sensor_error">Sensor error</string>
 
     <!-- Sensor attention (replace / ended / unknown error) — notification + Home card -->

@@ -81,7 +81,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
     val hasSensorAttention = attention != Libre3SensorAttention.None
     val liveUnavailable = local.isActiveGlucoseUnavailable(nowMs)
     val connectionUnavailable = state.isUnavailableForGlucoseDisplay()
-    // A fresh unavailable live reading is the newest glucose state: show "out of range" instead of
+    // A fresh unavailable live reading is the newest glucose state: show a sensor error instead of
     // falling back to the older stored value. Real sensor errors still come from patch-status attention.
     val glucose: GlucoseUi? = when {
         hasSensorAttention -> local?.copy(mgDL = null)
@@ -146,7 +146,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                 val valueText = when {
                     mgDl != null -> settings.unit.format(mgDl)
                     hasSensorAttention -> sensorAttentionPresentation(attention)?.title ?: stringResource(R.string.sensor_error)
-                    outOfRange -> stringResource(R.string.sensor_out_of_range)
+                    outOfRange -> stringResource(R.string.sensor_error)
                     else -> stringResource(R.string.standby_no_reading)
                 }
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

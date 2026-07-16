@@ -131,6 +131,10 @@
         </service>
 
         <receiver
+            android:name="re.abbot.librecr.app.wear.complication.StaleRepaintReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name="re.abbot.librecr.app.service.AutoConnectReceiver"
             android:exported="false">
             <intent-filter>

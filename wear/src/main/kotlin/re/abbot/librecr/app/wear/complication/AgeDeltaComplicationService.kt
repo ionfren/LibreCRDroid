@@ -11,9 +11,9 @@ import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageComplicationData
 import androidx.wear.watchface.complications.data.SmallImageType
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
-import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
+import re.abbot.librecr.app.R
 import re.abbot.librecr.app.ble.isActiveGlucoseUnavailable
 import re.abbot.librecr.app.ble.toLastGlucose
 import re.abbot.librecr.app.data.SensorStateStore
@@ -22,7 +22,7 @@ import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.log.GlucoseLatencyTracer
 import re.abbot.librecr.protocol.dataplane.Libre3SensorAttention
 
-class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
+class AgeDeltaComplicationService : TrackedComplicationDataSourceService() {
     override fun onCreate() {
         super.onCreate()
         LibreCR.init(this)
@@ -31,9 +31,9 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
     override fun getPreviewData(type: ComplicationType): ComplicationData =
         buildData(type, previewReading(), null)
 
-    override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
+    override suspend fun onTrackedComplicationRequest(request: ComplicationRequest): ComplicationData {
         // In-memory live value first (instant); DataStore only when the service isn't running (cold).
-        // A fresh unavailable live reading shows "OOR"; real sensor errors come from patch-status.
+        // A fresh unavailable live reading shows "--" in the delta field; patch-status errors do too.
         val live = LibreCR.manager.glucose.value
         val appearance = LibreCR.appearance.current()
         val status = LibreCR.manager.sensorStatus.value
@@ -52,7 +52,7 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
         reading?.let { GlucoseLatencyTracer.mark(it.lifeCount, GlucoseLatencyTracer.Stage.AOD_UPDATED) }
         val returnedValue = when {
             sensorError -> "SENSOR_ERROR"
-            unavailable -> "OOR"
+            unavailable -> "SENSOR_UNAVAILABLE"
             else -> reading?.mgDL?.toString() ?: "NONE"
         }
         BleLog.log(
@@ -91,7 +91,15 @@ class AgeDeltaComplicationService : SuspendingComplicationDataSourceService() {
             ),
         )
         val description = PlainComplicationText.Builder(
-            GlucoseComplicationRenderer.contentDescription("Glucose time and delta per minute", reading, attention, appearance.unit, sensorError, unavailable)
+            GlucoseComplicationRenderer.contentDescription(
+                this,
+                getString(R.string.complication_age_delta),
+                reading,
+                attention,
+                appearance.unit,
+                sensorError,
+                unavailable,
+            )
         ).build()
         return when (type) {
             ComplicationType.PHOTO_IMAGE -> PhotoImageComplicationData.Builder(image, description)
