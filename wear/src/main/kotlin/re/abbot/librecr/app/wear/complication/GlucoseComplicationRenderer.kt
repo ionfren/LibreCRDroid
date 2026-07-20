@@ -21,7 +21,8 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 object GlucoseComplicationRenderer {
-    const val STALE_AFTER_MS = 6 * 60_000L
+    /** Keep the last value/timestamp visible through short BLE recovery; stale it at two minutes. */
+    const val STALE_AFTER_MS = 120_000L
     private const val TIMESTAMP_TEXT_SCALE = 0.66f
     private val COLOR_ERROR = 0xFFE53935.toInt()
     private val COLOR_WARN = 0xFFFFB300.toInt()

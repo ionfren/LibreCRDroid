@@ -345,4 +345,4 @@ private fun formatTimestamp(timestampMs: Long): String =
         .withZone(ZoneId.systemDefault())
         .format(Instant.ofEpochMilli(timestampMs))
 
-private const val WEAR_STALE_AFTER_MS = 6 * 60_000L
+private const val WEAR_STALE_AFTER_MS = 120_000L

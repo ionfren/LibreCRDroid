@@ -19,7 +19,7 @@ import re.abbot.librecr.app.log.BleLog
 object StaleRepaintScheduler {
     private const val REQUEST_CODE = 47
     /** Fire just past the boundary so the repaint reads the value as already stale. */
-    private const val SLACK_MS = 15_000L
+    private const val SLACK_MS = 1_000L
 
     fun armFrom(context: Context, receivedAtMs: Long) {
         runCatching {

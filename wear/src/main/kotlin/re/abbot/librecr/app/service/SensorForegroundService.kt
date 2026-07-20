@@ -134,7 +134,7 @@ class SensorForegroundService : Service() {
     companion object {
         private const val CHANNEL_ID = "librecr_sensor"
         private const val NOTIF_ID = 1
-        private const val GLUCOSE_STALE_AFTER_MS = 6 * 60_000L
+        private const val GLUCOSE_STALE_AFTER_MS = 120_000L
         private const val EXTRA_ALLOW_CANDIDATE_FIRST_PAIR =
             "re.abbot.librecr.app.extra.ALLOW_CANDIDATE_FIRST_PAIR"
 

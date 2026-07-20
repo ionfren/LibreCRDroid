@@ -116,7 +116,7 @@ class TrendAboveValueComplicationService : TrackedComplicationDataSourceService(
         lifeCount = 1234,
         mgDL = 101,
         trend = "RISING",
-        receivedAtMs = System.currentTimeMillis() - 2 * 60_000L,
+        receivedAtMs = System.currentTimeMillis() - 60_000L,
         deltaMgDlPerMin = 1.2,
     )
 }
