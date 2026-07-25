@@ -21,6 +21,7 @@ import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.MainActivity
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.ble.ConnectionState
+import re.abbot.librecr.app.isWearGlucoseFresh
 import re.abbot.librecr.app.log.BleLog
 
 /**
@@ -129,12 +130,11 @@ class SensorForegroundService : Service() {
             this == ConnectionState.ERROR
 
     private fun isFresh(receivedAtMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean =
-        receivedAtMs > 0L && nowMs - receivedAtMs < GLUCOSE_STALE_AFTER_MS
+        isWearGlucoseFresh(receivedAtMs, nowMs)
 
     companion object {
         private const val CHANNEL_ID = "librecr_sensor"
         private const val NOTIF_ID = 1
-        private const val GLUCOSE_STALE_AFTER_MS = 120_000L
         private const val EXTRA_ALLOW_CANDIDATE_FIRST_PAIR =
             "re.abbot.librecr.app.extra.ALLOW_CANDIDATE_FIRST_PAIR"
 

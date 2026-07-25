@@ -41,20 +41,20 @@ object LibreSensorGatt {
     )
 
     /**
-     * Data-plane notifications enabled once after Phase 6, in consumption order.
+     * Complete post-Phase 6 CCCD order observed on working Libre 3 sessions.
      *
-     * Every CCCD enable after the first rides the sensor-renegotiated slow link (~2s per listen
-     * window, observed in the field), so the order is critical-first: PATCH_CONTROL must stay
-     * first (arms the command channel; also appears to trigger the sensor's renegotiation),
-     * then the glucose pipeline (GLUCOSE_DATA + PATCH_STATUS), then the backfill channels.
-     *
-     * EVENT_LOG and FACTORY_DATA are deliberately ABSENT (2026-07-05): no collector consumes
-     * them, each cost one slow-link round trip per reconnect, and a timed-out EVENT_LOG enable
-     * is precisely what killed a field session. If the sensor ever misbehaves without them
-     * (no 177a stream, status=19 right after CCCD_REARM), re-add them here first.
+     * PATCH_CONTROL rejects history commands with ATT 0xFD when the prerequisite data-plane
+     * CCCDs are incomplete. Keep the captured order: control + auxiliary history channels,
+     * patch status, and finally realtime glucose.
      */
     val dataPlaneNotifying = listOf(
-        PATCH_CONTROL, GLUCOSE_DATA, PATCH_STATUS, HISTORIC_DATA, CLINICAL_DATA,
+        PATCH_CONTROL,
+        EVENT_LOG,
+        HISTORIC_DATA,
+        CLINICAL_DATA,
+        FACTORY_DATA,
+        PATCH_STATUS,
+        GLUCOSE_DATA,
     )
 
     /**

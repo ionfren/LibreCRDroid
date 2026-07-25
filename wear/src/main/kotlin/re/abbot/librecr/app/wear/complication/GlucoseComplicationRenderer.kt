@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import androidx.core.content.res.ResourcesCompat
 import re.abbot.librecr.app.R
+import re.abbot.librecr.app.WEAR_GLUCOSE_DISPLAY_HOLD_MS
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceSettings
@@ -21,8 +22,8 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 object GlucoseComplicationRenderer {
-    /** Keep the last value/timestamp visible through short BLE recovery; stale it at two minutes. */
-    const val STALE_AFTER_MS = 120_000L
+    /** Keep the last value/timestamp visible through short BLE recovery, matching Juggluco. */
+    const val STALE_AFTER_MS = WEAR_GLUCOSE_DISPLAY_HOLD_MS
     private const val TIMESTAMP_TEXT_SCALE = 0.66f
     private val COLOR_ERROR = 0xFFE53935.toInt()
     private val COLOR_WARN = 0xFFFFB300.toInt()

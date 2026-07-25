@@ -49,12 +49,17 @@ class SensorScanner(private val adapter: BluetoothAdapter) {
             normalizeIdentity(targetAddress),
             normalizeIdentity(targetDeviceName),
         ).toSet()
-        val filters = when {
-            targetAddress != null && BluetoothAdapter.checkBluetoothAddress(targetAddress.uppercase()) ->
-                listOf(ScanFilter.Builder().setDeviceAddress(targetAddress.uppercase()).build())
-            !targetDeviceName.isNullOrBlank() ->
-                listOf(ScanFilter.Builder().setDeviceName(targetDeviceName).build())
-            else -> listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(LibreSensorGatt.SERVICE)).build())
+        // Android ORs entries in the filter list. Keep every identity signal so a stale/rotated
+        // address does not make the whole recovery window blind while the advertised name remains
+        // stable. Software matching below still prevents selecting an unrelated Libre sensor.
+        val filters = buildList {
+            if (targetAddress != null && BluetoothAdapter.checkBluetoothAddress(targetAddress.uppercase())) {
+                add(ScanFilter.Builder().setDeviceAddress(targetAddress.uppercase()).build())
+            }
+            if (!targetDeviceName.isNullOrBlank()) {
+                add(ScanFilter.Builder().setDeviceName(targetDeviceName).build())
+            }
+            add(ScanFilter.Builder().setServiceUuid(ParcelUuid(LibreSensorGatt.SERVICE)).build())
         }
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)

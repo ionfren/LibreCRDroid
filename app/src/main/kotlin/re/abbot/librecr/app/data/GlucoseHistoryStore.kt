@@ -15,7 +15,7 @@ import java.io.File
  * Multi-day glucose history backing the Statistics screen, stored in SQLite.
  *
  * One row per minute (`minute` = epochMillis / 60000 is the PRIMARY KEY, so it is the
- * table's rowid and same-minute readings de-duplicate via INSERT-OR-REPLACE). That makes
+ * table's rowid and same-minute readings de-duplicate by source priority). That makes
  * the three things the stats screen does cheap and index-bounded:
  *   - append: a single keyed upsert (no whole-file rewrite, no O(n) line count),
  *   - statistics: computed by ONE aggregate query over the period — mean/SD/TIR/min-max
@@ -32,14 +32,22 @@ class GlucoseHistoryStore(context: Context) {
     @Volatile private var lastPruneAtMs = 0L
 
     /**
-     * Append one reading; same-minute duplicates replace in place. Prunes past the retention window.
+     * Append one reading; same-minute duplicates replace only an equal/lower-priority source.
+     * Historical five-minute points therefore fill missing minutes but cannot replace the
+     * canonical clinical/realtime series. Prunes past the retention window.
+     *
      * [mgDl] is the capped display value (feeds statistics); [chartMgDl] is the uncapped-below-floor
      * value (feeds the chart via [chartSamples]) — usually identical.
      */
-    suspend fun append(mgDl: Int, chartMgDl: Int, atMs: Long): Unit = withContext(Dispatchers.IO) {
+    internal suspend fun append(
+        mgDl: Int,
+        chartMgDl: Int,
+        atMs: Long,
+        source: GlucoseHistorySource,
+    ): Unit = withContext(Dispatchers.IO) {
         ensureMigrated()
         val db = helper.writableDatabase
-        db.insertWithOnConflict(TABLE, null, row(atMs, mgDl, chartMgDl), SQLiteDatabase.CONFLICT_REPLACE)
+        upsertByPriority(db, row(atMs, mgDl, chartMgDl, source))
         maybePrune(db)
     }
 
@@ -139,7 +147,16 @@ class GlucoseHistoryStore(context: Context) {
         val db = helper.writableDatabase
         val before = count(db)
         db.transaction {
-            incoming.forEach { s -> insertWithOnConflict(TABLE, null, row(s.atMs, s.mgDl), SQLiteDatabase.CONFLICT_REPLACE) }
+            incoming.forEach { sample ->
+                upsertByPriority(
+                    this,
+                    row(
+                        sample.atMs,
+                        sample.mgDl,
+                        source = GlucoseHistorySource.REALTIME_OR_IMPORT,
+                    ),
+                )
+            }
             prune(this)
         }
         (count(db) - before).coerceAtLeast(0)
@@ -153,10 +170,35 @@ class GlucoseHistoryStore(context: Context) {
     private fun count(db: SQLiteDatabase): Int =
         db.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
 
-    private fun row(atMs: Long, mgDl: Int, chartMgDl: Int = mgDl) = ContentValues(3).apply {
+    private fun row(
+        atMs: Long,
+        mgDl: Int,
+        chartMgDl: Int = mgDl,
+        source: GlucoseHistorySource = GlucoseHistorySource.CLINICAL_BACKFILL,
+    ) = ContentValues(4).apply {
         put("minute", atMs / MIN_MS)
         put("mgdl", mgDl)
         put("chart_mgdl", chartMgDl)
+        put("source_priority", source.priority)
+    }
+
+    /**
+     * Keep conflict resolution independent of arrival order. UPDATE handles an existing
+     * equal/lower-priority row; INSERT-OR-IGNORE handles an absent row and is harmless when a
+     * higher-priority row already won a concurrent write.
+     */
+    private fun upsertByPriority(db: SQLiteDatabase, values: ContentValues) {
+        val minute = values.getAsLong("minute")
+        val priority = values.getAsInteger("source_priority")
+        val updated = db.update(
+            TABLE,
+            values,
+            "minute = ? AND source_priority <= ?",
+            arrayOf(minute.toString(), priority.toString()),
+        )
+        if (updated == 0) {
+            db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_IGNORE)
+        }
     }
 
     /** One-time import of the legacy NDJSON history, then retire the file. */
@@ -171,7 +213,16 @@ class GlucoseHistoryStore(context: Context) {
                     db.transaction {
                         legacy.useLines { lines ->
                             lines.forEach { line ->
-                                parseLegacy(line)?.let { insertWithOnConflict(TABLE, null, row(it.atMs, it.mgDl), SQLiteDatabase.CONFLICT_REPLACE) }
+                                parseLegacy(line)?.let {
+                                    upsertByPriority(
+                                        this,
+                                        row(
+                                            it.atMs,
+                                            it.mgDl,
+                                            source = GlucoseHistorySource.CLINICAL_BACKFILL,
+                                        ),
+                                    )
+                                }
                             }
                         }
                         prune(this)
@@ -207,7 +258,12 @@ class GlucoseHistoryStore(context: Context) {
 
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
-                "CREATE TABLE $TABLE (minute INTEGER PRIMARY KEY, mgdl INTEGER NOT NULL, chart_mgdl INTEGER)",
+                "CREATE TABLE $TABLE (" +
+                    "minute INTEGER PRIMARY KEY, " +
+                    "mgdl INTEGER NOT NULL, " +
+                    "chart_mgdl INTEGER, " +
+                    "source_priority INTEGER NOT NULL DEFAULT ${GlucoseHistorySource.CLINICAL_BACKFILL.priority}" +
+                    ")",
             )
         }
 
@@ -216,12 +272,21 @@ class GlucoseHistoryStore(context: Context) {
             if (oldVersion < 2) {
                 db.execSQL("ALTER TABLE $TABLE ADD COLUMN chart_mgdl INTEGER")
             }
+            // Existing rows may be realtime, clinical, or from the short-lived mixed-stream build.
+            // Treat them as clinical: future historical data cannot overwrite them, while a fresh
+            // clinical replay or realtime value can still repair an affected minute.
+            if (oldVersion < 3) {
+                db.execSQL(
+                    "ALTER TABLE $TABLE ADD COLUMN source_priority INTEGER NOT NULL " +
+                        "DEFAULT ${GlucoseHistorySource.CLINICAL_BACKFILL.priority}",
+                )
+            }
         }
     }
 
     companion object {
         private const val DB_NAME = "glucose_history.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
         private const val TABLE = "glucose"
         private const val MIN_MS = 60_000L
         private const val DAY_MS = 86_400_000L

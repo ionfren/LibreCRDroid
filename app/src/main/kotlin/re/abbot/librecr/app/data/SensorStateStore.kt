@@ -39,6 +39,7 @@ class SensorStateStore(
     private val keyAutoConnect = booleanPreferencesKey("auto_connect")
     private val keyWatchTakeover = booleanPreferencesKey("watch_takeover")
     private val keyLastLifeCount = intPreferencesKey("last_glucose_lifecount")
+    private val keyLastContiguousLifeCount = intPreferencesKey("last_contiguous_glucose_lifecount")
     private val keyLastMgDL = intPreferencesKey("last_glucose_mgdl")
     private val keyLastTrend = stringPreferencesKey("last_glucose_trend")
     private val keyLastReceivedAtMs = longPreferencesKey("last_glucose_received_at_ms")
@@ -156,7 +157,10 @@ class SensorStateStore(
             prefs[keySession] = session.withoutTransientCrypto().toJson()
             prefs.remove(keyLifecycleLifeCount)
             prefs.remove(keyLifecycleObservedAtMs)
-            if (!previousSession.isSameSensorAs(session)) prefs.clearCurrentGlucose()
+            if (!previousSession.isSameSensorAs(session)) {
+                prefs.clearCurrentGlucose()
+                prefs.clearLastContiguousLifeCount()
+            }
             prefs.clearSensorStatus()
         }
     }
@@ -192,7 +196,10 @@ class SensorStateStore(
             it[keySession] = session.withoutTransientCrypto().toJson()
             it.remove(keyLifecycleLifeCount)
             it.remove(keyLifecycleObservedAtMs)
-            if (!previousSession.isSameSensorAs(session)) it.clearCurrentGlucose()
+            if (!previousSession.isSameSensorAs(session)) {
+                it.clearCurrentGlucose()
+                it.clearLastContiguousLifeCount()
+            }
             it.clearSensorStatus()
             if (startsWarmup) {
                 it[keyWarmupStartedAtMs] = warmupStartedAtMs
@@ -219,6 +226,7 @@ class SensorStateStore(
             it.remove(keyLifecycleObservedAtMs)
             it.remove(keyWarmupStartedAtMs)
             it.clearCurrentGlucose()
+            it.clearLastContiguousLifeCount()
             it.clearSensorStatus()
         }
     }
@@ -245,6 +253,42 @@ class SensorStateStore(
     }
 
     suspend fun loadLastGlucose(): LastGlucose? = lastGlucoseFlow.first()
+
+    /**
+     * Last sensor minute known to be gap-free. Existing installs predate this dedicated cursor, so the
+     * latest saved glucose lifeCount is migrated once as the best available starting point.
+     */
+    suspend fun loadLastContiguousLifeCount(expectedSession: ImportedSession): Int? {
+        var result: Int? = null
+        context.dataStore.edit {
+            if (!it.storedSession().isSameSensorAs(expectedSession)) return@edit
+            result = it[keyLastContiguousLifeCount] ?: it[keyLastLifeCount]
+            if (it[keyLastContiguousLifeCount] == null) {
+                result?.let { lifeCount -> it[keyLastContiguousLifeCount] = lifeCount }
+            }
+        }
+        return result
+    }
+
+    /**
+     * Persist a monotonic contiguous cursor only while [expectedSession] is still the active sensor.
+     * This atomically rejects a queued write from the previous sensor after a session replacement.
+     */
+    suspend fun saveLastContiguousLifeCount(
+        lifeCount: Int,
+        expectedSession: ImportedSession,
+    ): Boolean {
+        var accepted = false
+        context.dataStore.edit {
+            if (!it.storedSession().isSameSensorAs(expectedSession)) return@edit
+            accepted = true
+            val previous = it[keyLastContiguousLifeCount]
+            if (previous == null || lifeCount > previous) {
+                it[keyLastContiguousLifeCount] = lifeCount
+            }
+        }
+        return accepted
+    }
 
     suspend fun clearCurrentGlucoseIfStale(nowMs: Long = System.currentTimeMillis()): Boolean {
         var cleared = false
@@ -290,7 +334,12 @@ class SensorStateStore(
             else it[keyLastDeltaMgDlPerMin] = delta
             it[keyGlucoseHistory] = encodeHistory(appendHistory(parseHistory(it[keyGlucoseHistory]), reading))
         }
-        history.append(mgDL, chartMgDL ?: mgDL, receivedAtMs)
+        history.append(
+            mgDL,
+            chartMgDL ?: mgDL,
+            receivedAtMs,
+            glucoseHistorySource(trend),
+        )
     }
 
     suspend fun saveSensorLifecycle(lifeCountMinutes: Int, observedAtMs: Long = System.currentTimeMillis()) {
@@ -323,6 +372,10 @@ class SensorStateStore(
         remove(keyLastTrend)
         remove(keyLastReceivedAtMs)
         remove(keyLastDeltaMgDlPerMin)
+    }
+
+    private fun MutablePreferences.clearLastContiguousLifeCount() {
+        remove(keyLastContiguousLifeCount)
     }
 
     private fun MutablePreferences.storedSession(): ImportedSession? =
@@ -367,7 +420,12 @@ class SensorStateStore(
         context.dataStore.edit {
             it[keyGlucoseHistory] = encodeHistory(appendHistory(parseHistory(it[keyGlucoseHistory]), reading))
         }
-        history.append(mgDL, chartMgDL ?: mgDL, receivedAtMs)
+        history.append(
+            mgDL,
+            chartMgDL ?: mgDL,
+            receivedAtMs,
+            glucoseHistorySource(trend),
+        )
         return true
     }
 
@@ -383,14 +441,24 @@ class SensorStateStore(
                 context.dataStore.edit {
                     it[keyGlucoseHistory] = encodeHistory(appendHistory(parseHistory(it[keyGlucoseHistory]), reading))
                 }
-                history.append(reading.mgDL, reading.chartMgDL ?: reading.mgDL, reading.receivedAtMs)
+                history.append(
+                    reading.mgDL,
+                    reading.chartMgDL ?: reading.mgDL,
+                    reading.receivedAtMs,
+                    glucoseHistorySource(reading.trend),
+                )
                 return false
             }
             if (reading.lifeCount == current.lifeCount) {
                 context.dataStore.edit {
                     it[keyGlucoseHistory] = encodeHistory(appendHistory(parseHistory(it[keyGlucoseHistory]), reading))
                 }
-                history.append(reading.mgDL, reading.chartMgDL ?: reading.mgDL, reading.receivedAtMs)
+                history.append(
+                    reading.mgDL,
+                    reading.chartMgDL ?: reading.mgDL,
+                    reading.receivedAtMs,
+                    glucoseHistorySource(reading.trend),
+                )
                 return false
             }
         }
@@ -407,7 +475,12 @@ class SensorStateStore(
             else it[keyLastDeltaMgDlPerMin] = delta
             it[keyGlucoseHistory] = encodeHistory(appendHistory(parseHistory(it[keyGlucoseHistory]), reading))
         }
-        history.append(reading.mgDL, reading.chartMgDL ?: reading.mgDL, reading.receivedAtMs)
+        history.append(
+            reading.mgDL,
+            reading.chartMgDL ?: reading.mgDL,
+            reading.receivedAtMs,
+            glucoseHistorySource(reading.trend),
+        )
         return true
     }
 
@@ -471,12 +544,7 @@ class SensorStateStore(
     }
 
     private fun appendHistory(history: List<LastGlucose>, reading: LastGlucose): List<LastGlucose> {
-        val filtered = history.filterNot {
-            it.receivedAtMs == reading.receivedAtMs || it.lifeCount == reading.lifeCount
-        }
-        return (filtered + reading)
-            .sortedBy { it.receivedAtMs }
-            .takeLast(MAX_GLUCOSE_HISTORY_POINTS)
+        return mergeGlucoseHistory(history, reading, MAX_GLUCOSE_HISTORY_POINTS)
     }
 
     private fun MutablePreferences.clearWarmupIfComplete(lifeCountMinutes: Int) {

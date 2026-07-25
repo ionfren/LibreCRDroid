@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import re.abbot.librecr.app.data.CloudSettings
+import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.SettingsStore
 import re.abbot.librecr.app.data.deviceUniqueId
@@ -89,14 +90,14 @@ class LibreViewUploader(
         val device = MeasurementPayload.Device(
             hardwareDescriptor = Build.MODEL,
             hardwareName = Build.MANUFACTURER,
-            modelName = "com.freestylelibre.app.gb",
+            modelName = libreViewAppModel(current.unit),
             osVersion = Build.VERSION.SDK_INT.toString(),
             uniqueIdentifier = deviceUniqueId(context),
         )
         val recordNumber = lifeCount.toLong()
         val body = MeasurementPayload.build(
             device = device,
-            unitLabel = "mg/dL",
+            unitLabel = current.unit.label,
             isStreaming = true,
             language = languageTag(),
             targetLow = current.targetLow,
@@ -113,5 +114,16 @@ class LibreViewUploader(
     private fun languageTag(): String {
         val loc = Locale.getDefault()
         return if (loc.country.isBlank()) loc.language else "${loc.language}-${loc.country}"
+    }
+
+    /**
+     * LibreView/LibreLinkUp derives the display unit for the history graph and alarms from the
+     * regional variant of the reporting app (`header.device.modelName`), not just from `UOM`. So the
+     * modelName must match the user's chosen unit or the follower sees a mix (live value in one unit,
+     * history in another). Juggluco does the same: `.fr` is a mg/dL region, `.gb` is a mmol/L region.
+     */
+    private fun libreViewAppModel(unit: GlucoseUnit): String = when (unit) {
+        GlucoseUnit.MG_DL -> "com.freestylelibre.app.fr"
+        GlucoseUnit.MMOL_L -> "com.freestylelibre.app.gb"
     }
 }

@@ -27,6 +27,7 @@ import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.alarm.StalenessWatchdog
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.protocol.dataplane.ContiguousLifeCountTracker
 import re.abbot.librecr.protocol.dataplane.DataFrame
 import re.abbot.librecr.protocol.dataplane.DataPlaneChannel
 import re.abbot.librecr.protocol.dataplane.DataPlaneCrypto
@@ -37,6 +38,7 @@ import re.abbot.librecr.protocol.dataplane.DataPlanePacketKind
 import re.abbot.librecr.protocol.dataplane.Libre3SensorCondition
 import re.abbot.librecr.protocol.dataplane.PatchControlCommand
 import re.abbot.librecr.protocol.dataplane.RealtimeGlucoseReading
+import re.abbot.librecr.protocol.dataplane.glucoseChartBackfillCommands
 import re.abbot.librecr.protocol.crypto.AesCcmException
 import re.abbot.librecr.protocol.pairing.PairingFlow
 import re.abbot.librecr.protocol.pairing.PairingFlowException
@@ -74,9 +76,27 @@ private data class BackfillRequest(
     val reason: String,
 )
 
+internal fun shouldCoalesceBackfillRequest(
+    previousFromLifeCount: Int?,
+    previousAtMs: Long,
+    requestedFromLifeCount: Int,
+    nowMs: Long,
+    windowMs: Long,
+): Boolean {
+    val elapsedMs = nowMs - previousAtMs
+    return previousFromLifeCount != null &&
+        requestedFromLifeCount >= previousFromLifeCount &&
+        elapsedMs in 0 until windowMs
+}
+
 private data class LifecycleUpdate(
     val lifeCount: Int,
     val observedAtMs: Long,
+)
+
+private data class ContiguousCursorUpdate(
+    val lifeCount: Int,
+    val session: ImportedSession,
 )
 
 /**
@@ -105,7 +125,7 @@ class SensorConnectionManager(
     @Volatile private var cachedPhase5RawKey: ByteArray? = null
     /** Consecutive non-mismatch cached-reconnect failures; a correct key survives transient blips. */
     @Volatile private var cachedReconnectFailures: Int = 0
-    @Volatile private var lastDecodedLifeCount: Int? = null
+    @Volatile private var lifeCountTracker = ContiguousLifeCountTracker()
     @Volatile private var lastSentReading: SensorStateStore.LastGlucose? = null
     /** Last (errorData, patchState) pair we persisted/relayed, so we act only on real transitions. */
     @Volatile private var lastSensorStatus: Pair<Int, Int>? = null
@@ -119,6 +139,11 @@ class SensorConnectionManager(
     @Volatile private var reconnectStartedAtMs = 0L
     @Volatile private var awaitingFirstReadingAfterReconnect = false
     @Volatile private var reconnectLastGoodLifeCount: Int? = null
+    private val backfillRequestLock = Any()
+    private var lastBackfillRequestFrom: Int? = null
+    private var lastBackfillRequestAtMs = 0L
+    /** Cleared by the first clinical record returned for the active `>= start` request. */
+    private var pendingClinicalBackfillStart: Int? = null
 
     // Match the stable Wear path: live decode/UI/relay never waits for DataStore. A single
     // conflated IO consumer persists only the newest pending reading, so slow flash I/O cannot
@@ -126,6 +151,10 @@ class SensorConnectionManager(
     private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val persistChannel = Channel<SensorStateStore.LastGlucose>(Channel.CONFLATED)
     private val lifecycleChannel = Channel<LifecycleUpdate>(Channel.CONFLATED)
+    // Keep sensor identities ordered across a session switch: a late old-sensor update must not
+    // conflate away the first cursor update for the replacement sensor. At one item/minute this is
+    // naturally bounded in practice, and the DataStore consumer still stays off the BLE path.
+    private val contiguousLifeCountChannel = Channel<ContiguousCursorUpdate>(Channel.UNLIMITED)
 
     init {
         persistScope.launch {
@@ -148,6 +177,21 @@ class SensorConnectionManager(
             for (update in lifecycleChannel) {
                 runCatching { store.saveSensorLifecycle(update.lifeCount, update.observedAtMs) }
                     .onFailure { BleLog.log("persist: lifecycle lc=${update.lifeCount} failed: ${it.message}") }
+            }
+        }
+        persistScope.launch {
+            for (update in contiguousLifeCountChannel) {
+                runCatching {
+                    store.saveLastContiguousLifeCount(update.lifeCount, update.session)
+                }.onSuccess { accepted ->
+                    if (!accepted) {
+                        BleLog.log(
+                            "persist: discarded stale contiguous lc=${update.lifeCount}; sensor session changed",
+                        )
+                    }
+                }.onFailure {
+                    BleLog.log("persist: contiguous lc=${update.lifeCount} failed: ${it.message}")
+                }
             }
         }
     }
@@ -227,10 +271,11 @@ class SensorConnectionManager(
     private fun clearCurrentGlucoseState() {
         _glucose.value = null
         lastGlucoseAt.set(0L)
-        lastDecodedLifeCount = null
+        lifeCountTracker = ContiguousLifeCountTracker()
         lastSentReading = null
         lastSensorStatus = null
         cachedReconnectFailures = 0
+        resetBackfillCoalescing()
     }
 
     /**
@@ -248,7 +293,7 @@ class SensorConnectionManager(
         sensorOnline = false
         pendingReconnectReason = reason
         lastDisconnectStatus = status
-        reconnectLastGoodLifeCount = lastSentReading?.lifeCount ?: lastDecodedLifeCount
+        reconnectLastGoodLifeCount = lastSentReading?.lifeCount ?: lifeCountTracker.lastContiguousLifeCount
         reconnectStartedAtMs = System.currentTimeMillis()
         awaitingFirstReadingAfterReconnect = true
         val age = if (lastGlucoseAt.get() > 0) System.currentTimeMillis() - lastGlucoseAt.get() else -1
@@ -367,6 +412,8 @@ class SensorConnectionManager(
         var currentSession = session
         loadCachedPhase5RawKeyIfNeeded()
         loadLastSentReadingIfNeeded()
+        val continuitySession = session
+        val continuityTracker = seedContiguousLifeCountTracker(continuitySession)
 
         while (kotlin.coroutines.coroutineContext.isActive) {
             var conn: SensorConnection? = null
@@ -466,6 +513,7 @@ class SensorConnectionManager(
                 _statusLine.value = "streaming"
                 lastGlucoseAt.set(System.currentTimeMillis())
                 sensorOnline = true
+                resetBackfillCoalescing()
                 BleLog.log(
                     "manager: sensor reconnected device=${device.address} " +
                         "attempt=$reconnectAttempt resume=${cachedPhase5RawKey != null}",
@@ -479,12 +527,48 @@ class SensorConnectionManager(
                         }
                     }
                     val collectors = listOf(
-                        launch { collectGlucose(c, decoder, backfillRequests) },
-                        launch { collectChannel(c, decoder, LibreSensorGatt.PATCH_STATUS, DataPlaneChannel.PATCH_STATUS) },
-                        launch { collectChannel(c, decoder, LibreSensorGatt.HISTORIC_DATA, DataPlaneChannel.HISTORIC_DATA) },
-                        launch { collectChannel(c, decoder, LibreSensorGatt.CLINICAL_DATA, DataPlaneChannel.CLINICAL_DATA) },
+                        launch {
+                            collectGlucose(
+                                c,
+                                decoder,
+                                backfillRequests,
+                                continuityTracker,
+                                continuitySession,
+                            )
+                        },
+                        launch {
+                            collectChannel(
+                                c,
+                                decoder,
+                                LibreSensorGatt.PATCH_STATUS,
+                                DataPlaneChannel.PATCH_STATUS,
+                                continuityTracker,
+                                continuitySession,
+                                backfillRequests,
+                            )
+                        },
+                        launch {
+                            collectChannel(
+                                c,
+                                decoder,
+                                LibreSensorGatt.HISTORIC_DATA,
+                                DataPlaneChannel.HISTORIC_DATA,
+                                continuityTracker,
+                                continuitySession,
+                            )
+                        },
+                        launch {
+                            collectChannel(
+                                c,
+                                decoder,
+                                LibreSensorGatt.CLINICAL_DATA,
+                                DataPlaneChannel.CLINICAL_DATA,
+                                continuityTracker,
+                                continuitySession,
+                            )
+                        },
                     )
-                    launch { enqueueImmediateReconnectBackfill(backfillRequests) }
+                    launch { enqueueImmediateReconnectBackfill(backfillRequests, continuityTracker) }
                     val watchdog = launch { watchdog(c) }
                     disconnected.await()
                     collectors.forEach { it.cancel() }
@@ -650,6 +734,23 @@ class SensorConnectionManager(
             .onFailure { BleLog.log("manager: previous glucose unavailable: ${it.message}") }
     }
 
+    private suspend fun seedContiguousLifeCountTracker(
+        session: ImportedSession,
+    ): ContiguousLifeCountTracker {
+        val tracker = try {
+            val seed = store.loadLastContiguousLifeCount(session)
+            BleLog.log("[BACKFILL] contiguous cursor seeded last=${seed ?: -1}")
+            ContiguousLifeCountTracker(seed)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            BleLog.log("[BACKFILL] contiguous cursor unavailable: ${e.message}")
+            ContiguousLifeCountTracker()
+        }
+        lifeCountTracker = tracker
+        return tracker
+    }
+
     private suspend fun rememberPhase5RawKey(key: ByteArray) {
         cachedPhase5RawKey = key.copyOf()
         runCatching { store.saveCachedPhase5RawKey(key) }
@@ -715,6 +816,8 @@ class SensorConnectionManager(
         conn: SensorConnection,
         decoder: DataPlaneDecoder,
         backfillRequests: Channel<BackfillRequest>,
+        continuityTracker: ContiguousLifeCountTracker,
+        continuitySession: ImportedSession,
     ) {
         val channel = conn.notifyChannel(LibreSensorGatt.GLUCOSE_DATA)
         val assembler = DataPlaneNotificationAssembler()
@@ -758,7 +861,12 @@ class SensorConnectionManager(
                 val packet = decoder.decrypt(DataFrame.parse(combined), DataPlaneChannel.GLUCOSE_DATA)
                 (packet.payload as? DataPlaneDecodedPayload.RealtimeGlucose)?.reading?.let { r ->
                     val decodedTs = System.currentTimeMillis()
-                    val missingStart = recordRealtimeLifeCount(r.lifeCount, "177a")
+                    val missingStart = recordRealtimeLifeCount(
+                        r.lifeCount,
+                        "177a",
+                        continuityTracker,
+                        continuitySession,
+                    )
                     if (missingStart != null) {
                         queueBackfill(
                             backfillRequests,
@@ -864,6 +972,9 @@ class SensorConnectionManager(
         decoder: DataPlaneDecoder,
         uuid: UUID,
         channel: DataPlaneChannel,
+        continuityTracker: ContiguousLifeCountTracker,
+        continuitySession: ImportedSession,
+        backfillRequests: Channel<BackfillRequest>? = null,
     ) {
         val ch = conn.notifyChannel(uuid)
         while (true) {
@@ -887,6 +998,14 @@ class SensorConnectionManager(
                                 "stackDisconnectReason=${s.stackDisconnectReason} appDisconnectReason=${s.appDisconnectReason} " +
                                 "plaintext=${packet.plaintext.toHex()}",
                         )
+                        val missingStart = continuityTracker.backfillStart(s.currentLifeCount)
+                        if (missingStart != null && backfillRequests != null) {
+                            queueBackfill(
+                                backfillRequests,
+                                missingStart,
+                                "patch status current lc=${s.currentLifeCount}",
+                            )
+                        }
                         // Surface sensor errors (insertion failure / ended / replace / unknown) once per
                         // transition: persist for UI + complications, relay to the watch, notify the user.
                         val statusKey = s.errorData to s.patchState
@@ -904,19 +1023,23 @@ class SensorConnectionManager(
                             "[BACKFILL] historical page lc=${p.startLifeCount}..${p.endLifeCount} " +
                                 "samples=${p.samples.joinToString { "${it.lifeCount}:${it.glucoseMgDL ?: "NA"}" }}",
                         )
+                        // A finalized five-minute historical page is not the same series as
+                        // currentGlucose. Keep it for diagnostics only; interleaving the two series
+                        // creates a false spike every five minutes in the minute-resolution chart.
                         for (sample in p.samples) {
                             val mg = sample.glucoseMgDL ?: continue
-                            val recovered = store.saveBackfilledGlucoseReading(
-                                sample.lifeCount,
-                                mg,
-                                "BACKFILL_HISTORICAL",
-                                chartMgDL = sample.glucoseStatus.chartMgDL,
+                            BleLog.log(
+                                "[BACKFILL] historical recovered lc=${sample.lifeCount} mgdl=$mg " +
+                                    "chartMergeSkipped=noncanonical_five_minute_series",
                             )
-                            BleLog.log("[BACKFILL] historical recovered lc=${sample.lifeCount} mgdl=$mg saved=$recovered")
                         }
                     }
                     is DataPlaneDecodedPayload.ClinicalReadingRecordPayload -> {
                         val r = payload.record
+                        skipUnavailableClinicalPrefixIfNeeded(
+                            firstReturnedLifeCount = r.lifeCount,
+                            continuityTracker = continuityTracker,
+                        )
                         val mg = r.currentGlucoseMgDL
                         val recovered = mg?.let {
                             store.saveBackfilledGlucoseReading(
@@ -926,6 +1049,10 @@ class SensorConnectionManager(
                                 chartMgDL = r.currentGlucose.chartMgDL,
                             )
                         } ?: false
+                        // A valid value advances continuity only after its history merge completed.
+                        // A structurally valid record with no glucose still counts as received, so it
+                        // does not trigger an endless replay loop for a permanently invalid minute.
+                        recordClinicalLifeCount(r.lifeCount, continuityTracker, continuitySession)
                         BleLog.log(
                             "[BACKFILL] clinical lc=${r.lifeCount} mgdl=${mg ?: "NA"} " +
                                 "raw=${r.currentGlucoseRaw} historicEstimate=${r.historicLifeCountEstimate} saved=$recovered",
@@ -937,29 +1064,48 @@ class SensorConnectionManager(
         }
     }
 
-    private suspend fun enqueueImmediateReconnectBackfill(backfillRequests: Channel<BackfillRequest>) {
-        val saved = runCatching { store.lastGlucose() }
-            .onFailure { BleLog.log("[BACKFILL] reconnect skipped; last glucose unavailable: ${it.message}") }
-            .getOrNull()
-        if (saved == null) {
-            BleLog.log("[BACKFILL] reconnect skipped; no saved glucose lifeCount")
+    private fun enqueueImmediateReconnectBackfill(
+        backfillRequests: Channel<BackfillRequest>,
+        continuityTracker: ContiguousLifeCountTracker,
+    ) {
+        val fromLifeCount = continuityTracker.nextMissingLifeCount
+        if (fromLifeCount == null) {
+            BleLog.log("[BACKFILL] reconnect skipped; no contiguous glucose cursor")
             return
         }
-        val previousDecoded = lastDecodedLifeCount
-        if (previousDecoded == null || saved.first > previousDecoded) {
-            lastDecodedLifeCount = saved.first
-        }
-        val fromLifeCount = saved.first + 1
         BleLog.log(
             "[BACKFILL] reconnect immediate request from missing lifeCount=$fromLifeCount " +
-                "lastSaved=${saved.first} mgdl=${saved.second}",
+                "lastContiguous=${continuityTracker.lastContiguousLifeCount ?: -1}",
         )
         queueBackfill(backfillRequests, fromLifeCount, "reconnect")
     }
 
     private fun queueBackfill(backfillRequests: Channel<BackfillRequest>, fromLifeCount: Int, reason: String) {
         val request = BackfillRequest(maxOf(fromLifeCount, 0), reason)
-        val result = backfillRequests.trySend(request)
+        val nowMs = System.currentTimeMillis()
+        val result = synchronized(backfillRequestLock) {
+            if (
+                shouldCoalesceBackfillRequest(
+                    previousFromLifeCount = lastBackfillRequestFrom,
+                    previousAtMs = lastBackfillRequestAtMs,
+                    requestedFromLifeCount = request.fromLifeCount,
+                    nowMs = nowMs,
+                    windowMs = BACKFILL_COALESCE_WINDOW_MS,
+                )
+            ) {
+                BleLog.log(
+                    "[BACKFILL] coalesced reason=$reason from lifeCount=${request.fromLifeCount} " +
+                        "(covered by >=${lastBackfillRequestFrom ?: -1})",
+                )
+                return
+            }
+            backfillRequests.trySend(request).also { sendResult ->
+                if (sendResult.isSuccess) {
+                    lastBackfillRequestFrom = request.fromLifeCount
+                    lastBackfillRequestAtMs = nowMs
+                }
+            }
+        }
         if (result.isSuccess) {
             BleLog.log("[BACKFILL] queued reason=$reason from lifeCount=${request.fromLifeCount}")
         } else {
@@ -972,50 +1118,88 @@ class SensorConnectionManager(
         fromLifeCount: Int,
         reason: String,
     ) {
-        val start = maxOf(fromLifeCount, 0)
-        val commands = listOf(
-            PatchControlCommand.clinicalBackfillGreaterEqual(start),
-        )
+        val clinicalStart = maxOf(fromLifeCount, 0)
+        BleLog.log("[BACKFILL] dispatch reason=$reason clinicalStart=$clinicalStart stream=clinical")
+        val commands = glucoseChartBackfillCommands(clinicalStart)
         for (command in commands) {
+            synchronized(backfillRequestLock) {
+                pendingClinicalBackfillStart = clinicalStart
+            }
             patchControl.write(command, reason)
         }
     }
 
-    private fun recordRealtimeLifeCount(lifeCount: Int, source: String): Int? {
-        val previous = lastDecodedLifeCount
-        return when {
-            previous == null -> {
-                lastDecodedLifeCount = lifeCount
-                null
-            }
-            lifeCount > previous -> {
-                lastDecodedLifeCount = lifeCount
-                val missing = lifeCount - previous - 1
-                if (missing > 0) {
-                    val start = previous + 1
-                    val end = lifeCount - 1
-                    BleLog.log(
-                        "[MISSING] missing ${formatLifeCountRange(start, end)} before $source lc=$lifeCount " +
-                            "previous=$previous count=$missing",
-                    )
-                    start
-                } else {
-                    null
-                }
-            }
-            lifeCount == previous -> {
-                BleLog.log("[MISSING] duplicate lifeCount=$lifeCount from $source")
-                null
-            }
-            else -> {
-                BleLog.log("[MISSING] out-of-order lifeCount=$lifeCount from $source previous=$previous")
-                null
-            }
+    private fun skipUnavailableClinicalPrefixIfNeeded(
+        firstReturnedLifeCount: Int,
+        continuityTracker: ContiguousLifeCountTracker,
+    ) {
+        val requestedStart = synchronized(backfillRequestLock) {
+            pendingClinicalBackfillStart.also { pendingClinicalBackfillStart = null }
+        } ?: return
+        if (firstReturnedLifeCount <= requestedStart) return
+        if (continuityTracker.skipUnavailableBefore(firstReturnedLifeCount)) {
+            BleLog.log(
+                "[BACKFILL] sensor replay starts at lc=$firstReturnedLifeCount; " +
+                    "skipped unavailable clinical prefix $requestedStart..${firstReturnedLifeCount - 1}",
+            )
         }
     }
 
-    private fun formatLifeCountRange(start: Int, end: Int): String =
-        if (start == end) "lifeCount=$start" else "lifeCount=$start..$end"
+    private fun recordRealtimeLifeCount(
+        lifeCount: Int,
+        source: String,
+        continuityTracker: ContiguousLifeCountTracker,
+        continuitySession: ImportedSession,
+    ): Int? {
+        val missingStart = recordLifeCount(lifeCount, source, continuityTracker, continuitySession)
+        if (missingStart != null) {
+            BleLog.log(
+                "[MISSING] contiguous gap starts at lifeCount=$missingStart before $source lc=$lifeCount " +
+                    "lastContiguous=${continuityTracker.lastContiguousLifeCount ?: -1}",
+            )
+        }
+        return missingStart
+    }
+
+    private fun recordClinicalLifeCount(
+        lifeCount: Int,
+        continuityTracker: ContiguousLifeCountTracker,
+        continuitySession: ImportedSession,
+    ) {
+        recordLifeCount(lifeCount, "clinical backfill", continuityTracker, continuitySession)
+    }
+
+    private fun recordLifeCount(
+        lifeCount: Int,
+        source: String,
+        continuityTracker: ContiguousLifeCountTracker,
+        continuitySession: ImportedSession,
+    ): Int? {
+        val previous = continuityTracker.lastContiguousLifeCount
+        val advanced = continuityTracker.record(lifeCount)
+        val current = continuityTracker.lastContiguousLifeCount
+        if (advanced && current != null) {
+            contiguousLifeCountChannel.trySend(ContiguousCursorUpdate(current, continuitySession))
+            BleLog.log("[BACKFILL] contiguous cursor advanced ${previous ?: -1}->$current from $source lc=$lifeCount")
+        } else if (previous != null && lifeCount <= previous) {
+            val order = if (lifeCount == previous) "duplicate" else "out-of-order"
+            BleLog.log("[MISSING] $order lifeCount=$lifeCount from $source lastContiguous=$previous")
+        } else if (!advanced) {
+            BleLog.log(
+                "[MISSING] retained lifeCount=$lifeCount beyond gap from $source " +
+                    "lastContiguous=${current ?: -1}",
+            )
+        }
+        return continuityTracker.backfillStart(lifeCount)
+    }
+
+    private fun resetBackfillCoalescing() {
+        synchronized(backfillRequestLock) {
+            lastBackfillRequestFrom = null
+            lastBackfillRequestAtMs = 0L
+            pendingClinicalBackfillStart = null
+        }
+    }
 
     private class PatchControlBackfillWriter(
         private val conn: SensorConnection,
@@ -1082,6 +1266,7 @@ class SensorConnectionManager(
          */
         private const val NO_DATA_TIMEOUT_MS = 135_000L
         private const val POST_AUTH_PATCH_CONTROL_TIMEOUT_MS = 10_000L
+        private const val BACKFILL_COALESCE_WINDOW_MS = 60_000L
         private const val HANDSHAKE_WAKE_LOCK_TIMEOUT_MS = 90_000L
         private const val PERSIST_SLOW_WARN_MS = 1_000L
         private const val FRAGMENT_ASSEMBLY_TIMEOUT_MS = 8_000L

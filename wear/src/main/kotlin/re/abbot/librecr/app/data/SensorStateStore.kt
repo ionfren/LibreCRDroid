@@ -33,6 +33,7 @@ class SensorStateStore(private val context: Context) {
     private val keySession = stringPreferencesKey("session_json")
     private val keyAutoConnect = booleanPreferencesKey("auto_connect")
     private val keyLastLifeCount = intPreferencesKey("last_glucose_lifecount")
+    private val keyLastContiguousLifeCount = intPreferencesKey("last_contiguous_glucose_lifecount")
     private val keyLastMgDL = intPreferencesKey("last_glucose_mgdl")
     private val keyLastTrend = stringPreferencesKey("last_glucose_trend")
     private val keyLastReceivedAtMs = longPreferencesKey("last_glucose_received_at_ms")
@@ -74,7 +75,13 @@ class SensorStateStore(private val context: Context) {
     // control-plane writes are never conflated and await their own commit. The conflated wake-up
     // channel cannot lose work because the guarded queue is the source of truth.
 
-    private enum class ConflationKey { GLUCOSE, SENSOR_STATUS }
+    private enum class ConflationKind { GLUCOSE, CONTIGUOUS_LIFE_COUNT, SENSOR_STATUS }
+
+    private data class ConflationKey(
+        val kind: ConflationKind,
+        /** Only continuity writes need session isolation; the other hot paths retain legacy behavior. */
+        val sensorIdentity: String? = null,
+    )
 
     private data class WriteRequest(
         val id: Long,
@@ -121,10 +128,54 @@ class SensorStateStore(private val context: Context) {
     fun queueGlucose(reading: LastGlucose) {
         enqueue(
             label = "glucose lc=${reading.lifeCount}",
-            conflationKey = ConflationKey.GLUCOSE,
+            conflationKey = ConflationKey(ConflationKind.GLUCOSE),
             transform = { it.applyGlucose(reading) },
             onCommitted = {
                 GlucoseLatencyTracer.mark(reading.lifeCount, GlucoseLatencyTracer.Stage.STORE_UPDATED)
+            },
+        )
+    }
+
+    /**
+     * Hot-path persistence for the highest sensor minute known to be gap-free. The transform is
+     * monotonic as well as conflated: realtime and clinical collectors may enqueue concurrently,
+     * but neither queue ordering nor an older retry can move the cursor backwards.
+     */
+    fun queueLastContiguousLifeCount(lifeCount: Int, expectedSession: ImportedSession) {
+        enqueue(
+            label = "contiguousLifeCount lc=$lifeCount",
+            conflationKey = ConflationKey(
+                ConflationKind.CONTIGUOUS_LIFE_COUNT,
+                expectedSession.continuityIdentity(),
+            ),
+            transform = { prefs ->
+                // A cancelled old collector may race a session replacement. Never let its delayed
+                // write seed the new sensor's cursor.
+                if (prefs.storedSession().isSameSensorAs(expectedSession)) {
+                    val previous = prefs[keyLastContiguousLifeCount]
+                    if (previous == null || lifeCount > previous) {
+                        prefs[keyLastContiguousLifeCount] = lifeCount
+                    }
+                }
+            },
+        )
+    }
+
+    /**
+     * Queue a recovered point without blocking its relay to the phone. It is accepted only if it is
+     * newer than the value committed by every earlier queued write, so backfill can never regress the
+     * watch's persisted latest reading.
+     */
+    fun queueBackfilledGlucose(reading: LastGlucose, expectedSession: ImportedSession) {
+        enqueue(
+            label = "backfilledGlucose lc=${reading.lifeCount}",
+            transform = { prefs ->
+                if (prefs.storedSession().isSameSensorAs(expectedSession)) {
+                    val currentLifeCount = prefs[keyLastLifeCount]
+                    if (currentLifeCount == null || reading.lifeCount > currentLifeCount) {
+                        prefs.applyGlucose(reading)
+                    }
+                }
             },
         )
     }
@@ -136,7 +187,7 @@ class SensorStateStore(private val context: Context) {
     fun queueSensorStatus(errorData: Int, patchState: Int, observedAtMs: Long = System.currentTimeMillis()) {
         enqueue(
             label = "sensorStatus err=$errorData patch=$patchState",
-            conflationKey = ConflationKey.SENSOR_STATUS,
+            conflationKey = ConflationKey(ConflationKind.SENSOR_STATUS),
             transform = { it.applySensorStatus(errorData, patchState, observedAtMs) },
         )
     }
@@ -326,8 +377,13 @@ class SensorStateStore(private val context: Context) {
     ) {
         val persistedSessionJson = session.withoutTransientCrypto().toJson()
         serializedEdit("session addr=${session.bleAddress}") { prefs ->
+            val previousSession = prefs.storedSession()
             applyCachedKeyOnSessionChange(prefs, session, preserveCachedKeyWhenKeyless)
             prefs[keySession] = persistedSessionJson
+            if (!previousSession.isSameSensorAs(session)) {
+                prefs.clearCurrentGlucose()
+                prefs.clearLastContiguousLifeCount()
+            }
             prefs.clearSensorStatus()
         }
     }
@@ -363,6 +419,8 @@ class SensorStateStore(private val context: Context) {
         serializedEdit("clearSession") {
             it.remove(keySession)
             it.remove(keyCachedPhase5RawKey)
+            it.clearCurrentGlucose()
+            it.clearLastContiguousLifeCount()
             it.clearSensorStatus()
         }
     }
@@ -390,6 +448,15 @@ class SensorStateStore(private val context: Context) {
     }
 
     suspend fun loadLastGlucose(): LastGlucose? = lastGlucoseFlow.first()
+
+    /**
+     * Last sensor minute known to be gap-free. Existing installs do not have the dedicated cursor,
+     * so their latest saved glucose is the conservative cold-start fallback.
+     */
+    suspend fun loadLastContiguousLifeCount(): Int? {
+        val prefs = context.dataStore.data.first()
+        return prefs[keyLastContiguousLifeCount] ?: prefs[keyLastLifeCount]
+    }
 
     suspend fun saveLastGlucose(lifeCount: Int, mgDL: Int) {
         saveGlucoseReading(lifeCount, mgDL, "UNKNOWN", System.currentTimeMillis())
@@ -422,17 +489,70 @@ class SensorStateStore(private val context: Context) {
         trend: String,
         fallbackReceivedAtMs: Long = System.currentTimeMillis(),
     ): Boolean {
-        val current = loadLastGlucose()
-        if (current != null && lifeCount <= current.lifeCount) return false
-        val receivedAtMs = estimateBackfillTime(current, lifeCount, fallbackReceivedAtMs)
-        saveGlucoseReading(lifeCount, mgDL, trend, receivedAtMs)
-        return true
+        var saved = false
+        serializedEdit("backfilledGlucose lc=$lifeCount") { prefs ->
+            val current = prefs.storedLastGlucose()
+            if (current == null || lifeCount > current.lifeCount) {
+                val receivedAtMs = estimateBackfillTime(current, lifeCount, fallbackReceivedAtMs)
+                val delta = current
+                    ?.takeIf { it.receivedAtMs in 1 until receivedAtMs }
+                    ?.let { (mgDL - it.mgDL).toDouble() / (lifeCount - it.lifeCount).toDouble() }
+                prefs.applyGlucose(LastGlucose(lifeCount, mgDL, trend, receivedAtMs, delta))
+                saved = true
+            }
+        }
+        return saved
     }
 
     private fun estimateBackfillTime(current: LastGlucose?, lifeCount: Int, fallbackReceivedAtMs: Long): Long {
         val anchor = current ?: return fallbackReceivedAtMs
         val estimated = anchor.receivedAtMs + (lifeCount - anchor.lifeCount) * 60_000L
         return estimated.takeIf { it > 0L } ?: fallbackReceivedAtMs
+    }
+
+    private fun MutablePreferences.clearCurrentGlucose() {
+        remove(keyLastLifeCount)
+        remove(keyLastMgDL)
+        remove(keyLastTrend)
+        remove(keyLastReceivedAtMs)
+        remove(keyLastDeltaMgDlPerMin)
+    }
+
+    private fun MutablePreferences.clearLastContiguousLifeCount() {
+        remove(keyLastContiguousLifeCount)
+    }
+
+    private fun MutablePreferences.storedSession(): ImportedSession? =
+        this[keySession]?.let { runCatching { ImportedSession.fromJson(it) }.getOrNull() }
+
+    private fun ImportedSession?.isSameSensorAs(next: ImportedSession): Boolean {
+        val previous = this ?: return false
+        val previousSerial = previous.serial?.takeIf { it.isNotBlank() }
+        val nextSerial = next.serial?.takeIf { it.isNotBlank() }
+        if (previousSerial != null && nextSerial != null) {
+            return previousSerial.equals(nextSerial, ignoreCase = true)
+        }
+        return previous.bleAddress.equals(next.bleAddress, ignoreCase = true)
+    }
+
+    private fun ImportedSession.continuityIdentity(): String =
+        serial
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.uppercase()
+            ?.let { "serial:$it" }
+            ?: "address:${bleAddress.uppercase()}"
+
+    private fun MutablePreferences.storedLastGlucose(): LastGlucose? {
+        val lifeCount = this[keyLastLifeCount] ?: return null
+        val mgDL = this[keyLastMgDL] ?: return null
+        return LastGlucose(
+            lifeCount = lifeCount,
+            mgDL = mgDL,
+            trend = this[keyLastTrend] ?: "UNKNOWN",
+            receivedAtMs = this[keyLastReceivedAtMs] ?: 0L,
+            deltaMgDlPerMin = this[keyLastDeltaMgDlPerMin],
+        )
     }
 
     private companion object {

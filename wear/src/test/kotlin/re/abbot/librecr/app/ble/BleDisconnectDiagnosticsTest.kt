@@ -85,4 +85,24 @@ class BleDisconnectDiagnosticsTest {
         assertEquals(false, shouldRetryWithDirectConnect(autoConnect = false, status = 133))
         assertEquals(false, shouldRetryWithDirectConnect(autoConnect = true, status = 8))
     }
+
+    @Test
+    fun `status 8 during controller establishment escapes to one direct attempt`() {
+        assertEquals(
+            true,
+            shouldRetryWithDirectConnect(
+                autoConnect = true,
+                status = 8,
+                connectionWasStreaming = false,
+            ),
+        )
+        assertEquals(
+            false,
+            shouldRetryWithDirectConnect(
+                autoConnect = true,
+                status = 8,
+                connectionWasStreaming = true,
+            ),
+        )
+    }
 }

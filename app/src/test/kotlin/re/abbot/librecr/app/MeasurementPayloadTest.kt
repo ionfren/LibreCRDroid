@@ -68,10 +68,34 @@ class MeasurementPayloadTest {
         assertEquals("FSLibreLink.Android", root.getString("GatewayType"))
         val deviceData = root.getJSONObject("DeviceData")
         assertEquals("Android", deviceData.getJSONObject("header").getJSONObject("device").getString("osType"))
+        assertEquals("mg/dL", deviceData.getJSONObject("deviceSettings").getJSONObject("factoryConfig").getString("UOM"))
+        assertEquals("com.freestylelibre.app.gb", deviceData.getJSONObject("header").getJSONObject("device").getString("modelName"))
         val log = deviceData.getJSONObject("measurementLog")
         assertEquals(120, log.getJSONArray("scheduledContinuousGlucoseEntries").getJSONObject(0).getInt("valueInMgPerDl"))
         assertEquals(120, log.getJSONArray("currentGlucoseEntries").getJSONObject(0).getInt("valueInMgPerDl"))
         assertEquals("Google", log.getJSONObject("device").getString("hardwareName")) // measurementLog repeats device
         assertEquals(70, deviceData.getJSONObject("deviceSettings").getJSONObject("miscellaneous").getInt("valueGlucoseTargetRangeLowInMgPerDl"))
+    }
+
+    @Test
+    fun unitLabelFlowsIntoFactoryConfigUom() {
+        // The uploader passes the user's unit here; LibreView/LibreLinkUp reads it for the display unit.
+        val body = MeasurementPayload.build(
+            device = device.copy(modelName = "com.freestylelibre.app.gb"),
+            unitLabel = "mmol/L",
+            isStreaming = true,
+            language = "en-GB",
+            targetLow = 70,
+            targetHigh = 180,
+            hour24 = true,
+            nowMs = ms,
+            userToken = "JWT.TOKEN.HERE",
+            currentEntries = listOf(MeasurementPayload.currentEntry(120, "STABLE", ms, 100L)),
+            scheduledEntries = listOf(MeasurementPayload.scheduledEntry(120, ms, 100L)),
+        )
+        val deviceData = JSONObject(body).getJSONObject("DeviceData")
+        assertEquals("mmol/L", deviceData.getJSONObject("deviceSettings").getJSONObject("factoryConfig").getString("UOM"))
+        // The value itself stays mg/dL regardless of the display unit.
+        assertEquals(120, deviceData.getJSONObject("measurementLog").getJSONArray("currentGlucoseEntries").getJSONObject(0).getInt("valueInMgPerDl"))
     }
 }

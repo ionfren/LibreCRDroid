@@ -13,6 +13,7 @@ import android.os.SystemClock
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -22,6 +23,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 class GattDisconnectedException(val gattStatus: Int) : IllegalStateException("disconnected status=$gattStatus")
+
+class GattOperationException(
+    val operation: String,
+    val gattStatus: Int,
+) : IllegalStateException("$operation failed status=$gattStatus")
+
+class GattOperationTimedOutException(
+    operation: String,
+    cause: TimeoutCancellationException,
+) : IllegalStateException("$operation timed out and closed the GATT", cause)
 
 /** Immutable, callback-safe snapshot used for the post-mortem lines in the shipped Wear log. */
 internal data class SensorLinkSnapshot(
@@ -129,8 +140,14 @@ class SensorConnection(
      * Connect, discover services, and enable only the security-handshake
      * notifications. Data-plane notifications are enabled once after Phase 6.
      */
-    suspend fun connectAndDiscover(connectTimeoutMs: Long, discoverTimeoutMs: Long, autoConnect: Boolean = false) {
+    suspend fun connectAndDiscover(
+        connectTimeoutMs: Long?,
+        discoverTimeoutMs: Long,
+        autoConnect: Boolean = false,
+        onConnected: (() -> Unit)? = null,
+    ) {
         connect(connectTimeoutMs, autoConnect)
+        onConnected?.invoke()
 
         // NO connection-priority requests for Libre 3. Every preset hurt: HIGH and BALANCED caused
         // random status=8 link drops, LOW_POWER made the multi-round-trip handshake too slow, and any
@@ -158,7 +175,7 @@ class SensorConnection(
         subscribeNotifyCharacteristics(LibreSensorGatt.handshakeNotifying, "handshake")
     }
 
-    private suspend fun connect(timeoutMs: Long, autoConnect: Boolean) = opMutex.withLock {
+    private suspend fun connect(timeoutMs: Long?, autoConnect: Boolean) = opMutex.withLock {
         val operation = "connect(auto=$autoConnect)"
         beginOperation(operation)
         val def = CompletableDeferred<Unit>()
@@ -181,7 +198,15 @@ class SensorConnection(
         }
         gatt = newGatt
         try {
-            withTimeout(timeoutMs) { def.await() }
+            if (timeoutMs == null) {
+                BleLog.log(
+                    "$WEAR_BLE_TAG SENSOR_AUTO_CONNECT_PERSISTENT generation=$connectionGenerationId " +
+                        "device=${device.address}",
+                )
+                def.await()
+            } else {
+                withTimeout(timeoutMs) { def.await() }
+            }
             finishOperation(operation, "ok")
         } catch (e: TimeoutCancellationException) {
             BleLog.log("gatt.connect timed out after ${timeoutMs}ms")
@@ -411,22 +436,30 @@ class SensorConnection(
     }
 
     /**
-     * First-time post-Phase 6 enable of the data-plane CCCDs. They are not
-     * subscribed during discovery, so no off→on toggle or settle delay is needed.
+     * Enables the complete post-Phase 6 data-plane CCCD set in protocol order.
      *
-     * Android GATT operations must remain serialized; unlike CoreBluetooth, the
-     * descriptor writes cannot safely be issued concurrently.
+     * A fresh Android GATT only needs the seven enables. A retained GATT, or a
+     * PATCH_CONTROL 0xFD recovery, needs a real off→on edge to make the sensor
+     * observe the new session. Android GATT operations remain serialized.
      */
-    suspend fun refreshDataPlaneNotifications() {
+    suspend fun refreshDataPlaneNotifications(forceRearm: Boolean = false) {
         val startedAtMs = System.currentTimeMillis()
-        BleLog.log("$WEAR_BLE_TAG CCCD_REARM_START count=${LibreSensorGatt.dataPlaneNotifying.size}")
+        val mode = if (forceRearm) "off_on" else "enable"
+        BleLog.log(
+            "$WEAR_BLE_TAG CCCD_REFRESH_START mode=$mode count=${LibreSensorGatt.dataPlaneNotifying.size}",
+        )
         try {
             for (uuid in LibreSensorGatt.dataPlaneNotifying) {
                 // Longer per-CCCD ceiling than the generic 5s op timeout: the sensor renegotiates
                 // to its streaming params (observed interval=390ms latency=4 ⇒ a guaranteed listen
                 // window only every ~2s) right in the middle of this sequence, so 5s left ~2.5
                 // windows for the descriptor ack and timed out in the field.
+                if (forceRearm) {
+                    setNotify(uuid, false, timeoutMs = DATA_PLANE_CCCD_TIMEOUT_MS)
+                    delay(DATA_PLANE_CCCD_SETTLE_MS)
+                }
                 setNotify(uuid, true, timeoutMs = DATA_PLANE_CCCD_TIMEOUT_MS)
+                if (forceRearm) delay(DATA_PLANE_CCCD_SETTLE_MS)
                 BleLog.log("gatt.notify: enabled data-plane CCCD ${short(uuid)}")
                 if (uuid == LibreSensorGatt.GLUCOSE_DATA) {
                     BleLog.log(
@@ -435,10 +468,13 @@ class SensorConnection(
                 }
             }
         } catch (e: Exception) {
-            BleLog.log("$WEAR_BLE_TAG CCCD_REARM_FAILED reason=${e.message}")
+            BleLog.log("$WEAR_BLE_TAG CCCD_REFRESH_FAILED mode=$mode reason=${e.message}")
             throw e
         }
-        BleLog.log("$WEAR_BLE_TAG CCCD_REARM_SUCCESS durationMs=${System.currentTimeMillis() - startedAtMs}")
+        BleLog.log(
+            "$WEAR_BLE_TAG CCCD_REFRESH_SUCCESS mode=$mode " +
+                "durationMs=${System.currentTimeMillis() - startedAtMs}",
+        )
     }
 
     /**
@@ -611,7 +647,11 @@ class SensorConnection(
             if (ignoreStaleCallback(g, "onCharacteristicWrite")) return
             recordCallback("write:${short(c.uuid)}:$status")
             if (status == BluetoothGatt.GATT_SUCCESS) pendingWrite?.complete(Unit)
-            else pendingWrite?.completeExceptionally(IllegalStateException("write failed status=$status"))
+            else {
+                pendingWrite?.completeExceptionally(
+                    GattOperationException("write ${short(c.uuid)}", status),
+                )
+            }
             pendingWrite = null
         }
 
@@ -619,7 +659,11 @@ class SensorConnection(
             if (ignoreStaleCallback(g, "onDescriptorWrite")) return
             recordCallback("descriptor:${short(d.characteristic.uuid)}:$status")
             if (status == BluetoothGatt.GATT_SUCCESS) pendingDescriptor?.complete(Unit)
-            else pendingDescriptor?.completeExceptionally(IllegalStateException("descriptor write failed status=$status"))
+            else {
+                pendingDescriptor?.completeExceptionally(
+                    GattOperationException("descriptor ${short(d.characteristic.uuid)}", status),
+                )
+            }
             pendingDescriptor = null
         }
 
@@ -790,6 +834,7 @@ class SensorConnection(
         const val OP_TIMEOUT_MS = 5_000L
         /** Post-handshake CCCD enables ride the renegotiated low-power link (~2s listen windows). */
         const val DATA_PLANE_CCCD_TIMEOUT_MS = 20_000L
+        private const val DATA_PLANE_CCCD_SETTLE_MS = 90L
         private const val RSSI_TIMEOUT_MS = 4_000L
 
         private const val WEAR_BLE_TAG = "[WEAR-BLE]"

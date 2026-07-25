@@ -307,7 +307,7 @@ private fun TrendArrow(
 }
 
 private fun isFresh(reading: SensorStateStore.LastGlucose?, nowMs: Long = System.currentTimeMillis()): Boolean =
-    reading != null && reading.receivedAtMs > 0L && nowMs - reading.receivedAtMs < WEAR_STALE_AFTER_MS
+    reading != null && isWearGlucoseFresh(reading.receivedAtMs, nowMs)
 
 private fun ConnectionState.isUnavailableForDisplay(): Boolean =
     this == ConnectionState.SCANNING ||
@@ -344,5 +344,3 @@ private fun formatTimestamp(timestampMs: Long): String =
     DateTimeFormatter.ofPattern("HH:mm")
         .withZone(ZoneId.systemDefault())
         .format(Instant.ofEpochMilli(timestampMs))
-
-private const val WEAR_STALE_AFTER_MS = 120_000L

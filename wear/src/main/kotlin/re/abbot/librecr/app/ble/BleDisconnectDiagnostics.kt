@@ -97,6 +97,18 @@ internal fun assessBleDisconnect(e: BleDisconnectEvidence): BleDisconnectAssessm
 internal fun shouldRetryWithDirectConnect(autoConnect: Boolean, status: Int): Boolean =
     autoConnect && status in DIRECT_CONNECT_FALLBACK_STATUSES
 
+/**
+ * During establishment, status 8 is also a failed controller attempt rather than a dropped live
+ * session. A live status-8 link still uses the retained-GATT → scan → controller recovery policy.
+ */
+internal fun shouldRetryWithDirectConnect(
+    autoConnect: Boolean,
+    status: Int,
+    connectionWasStreaming: Boolean,
+): Boolean =
+    shouldRetryWithDirectConnect(autoConnect, status) ||
+        (autoConnect && !connectionWasStreaming && status == 8)
+
 private fun evidenceText(e: BleDisconnectEvidence): String =
     "localRequest=${e.localDisconnectRequested},btEnabled=${e.bluetoothEnabled ?: "unknown"}," +
         "rssi=${e.rssiDbm ?: "unknown"},rssiAgeMs=${e.rssiAgeMs ?: -1}," +

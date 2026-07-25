@@ -72,7 +72,7 @@ object MeasurementPayload {
 
     fun build(
         device: Device,
-        unitLabel: String,           // "mg/dL"
+        unitLabel: String,           // "mg/dL" or "mmol/L" — must match device.modelName's region
         isStreaming: Boolean,
         language: String,            // e.g. "en-GB"
         targetLow: Int,
