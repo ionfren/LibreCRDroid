@@ -39,7 +39,9 @@ object BleLog {
     private val _watchLog = MutableStateFlow<List<String>>(emptyList())
     val watchLog: StateFlow<List<String>> = _watchLog
 
-    private val _enabled = MutableStateFlow(true)
+    // Logging is deliberately opt-in. SettingsStore restores the user's persisted choice after
+    // process startup; keeping this default false also suppresses logs emitted before that read.
+    private val _enabled = MutableStateFlow(false)
     val enabled: StateFlow<Boolean> = _enabled
 
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
@@ -75,6 +77,8 @@ object BleLog {
         phoneFlush.trySend(Unit)
     }
 
+    fun isEnabled(): Boolean = _enabled.value
+
     /**
      * Fold in a block of log lines pulled from another device (the watch) into the same viewer.
      * Each incoming line already carries its own timestamp, so it is kept verbatim and only prefixed
@@ -94,6 +98,7 @@ object BleLog {
     private val HEX_DIGITS = "0123456789abcdef".toCharArray()
 
     fun hex(data: ByteArray): String {
+        if (!isEnabled()) return ""
         val out = CharArray(data.size * 2)
         for (i in data.indices) {
             val v = data[i].toInt() and 0xff

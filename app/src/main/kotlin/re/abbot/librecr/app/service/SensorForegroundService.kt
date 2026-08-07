@@ -24,6 +24,7 @@ import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.ble.isUnavailableForGlucoseDisplay
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 
 /**
  * Foreground service (type connectedDevice) that keeps the connection loop alive
@@ -33,6 +34,7 @@ import re.abbot.librecr.app.log.BleLog
 class SensorForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var glucoseCollectorJob: Job? = null
+    private var warmupDurationMinutes = SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -52,6 +54,8 @@ class SensorForegroundService : Service() {
                 stopSelf()
                 return@launch
             }
+            warmupDurationMinutes =
+                session.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
             BleLog.log(
                 "service: starting sensor manager with independent local handshake " +
                     "allowCandidateFirstPair=$allowCandidateFirstPair legacyKeyIgnored=${session.phase5RawKey != null}"
@@ -73,12 +77,14 @@ class SensorForegroundService : Service() {
                     LibreCR.manager.state,
                 ) { glucose, settings, state -> Triple(glucose, settings.unit, state) }.collectLatest { (g, unit, state) ->
                     val text = when {
-                        g == null && state.isUnavailableForGlucoseDisplay() -> getString(R.string.sensor_error)
-                        g == null -> "no reading yet"
-                        !g.usable -> getString(R.string.sensor_error)
-                        state.isUnavailableForGlucoseDisplay() && !isFreshGlucose(g.receivedAtMs) -> getString(R.string.sensor_error)
+                        g == null && state.isUnavailableForGlucoseDisplay() -> getString(R.string.standby_no_reading)
+                        g == null -> getString(R.string.standby_no_reading)
+                        !g.usable && g.lifeCount < warmupDurationMinutes -> getString(R.string.sensor_warming_up)
+                        !g.usable -> getString(R.string.standby_no_reading)
+                        state.isUnavailableForGlucoseDisplay() && !isFreshGlucose(g.receivedAtMs) ->
+                            getString(R.string.standby_no_reading)
                         g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
-                        else -> "no reading yet"
+                        else -> getString(R.string.standby_no_reading)
                     }
                     notify(text)
                 }

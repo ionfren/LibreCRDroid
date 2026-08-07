@@ -41,12 +41,14 @@ import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.ble.GlucoseDisplayStatus
 import re.abbot.librecr.app.ble.GlucoseUi
 import re.abbot.librecr.app.ble.isActiveGlucoseUnavailable
+import re.abbot.librecr.app.ble.isSensorWarmupActive
 import re.abbot.librecr.app.ble.isUnavailableForGlucoseDisplay
 import re.abbot.librecr.protocol.TrendArrowShape
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.protocol.dataplane.Libre3SensorAttention
+import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -63,6 +65,8 @@ class AodGlucoseOverlayService : AccessibilityService() {
     private var localReading: GlucoseUi? = null
     private var storedReading: GlucoseUi? = null
     private var sensorAttention: Libre3SensorAttention = Libre3SensorAttention.None
+    private var warmupStartedAtMs: Long? = null
+    private var warmupDurationMinutes = SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
     private var connectionState: ConnectionState = ConnectionState.IDLE
     private var burnInIndex = 0
     private var currentPosition = AodSettings.POSITION_TOP
@@ -77,8 +81,8 @@ class AodGlucoseOverlayService : AccessibilityService() {
                 return local?.copy(mgDL = null, usable = false)
                     ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }?.copy(mgDL = null, usable = false)
             }
-            // A fresh unavailable live reading is the newest glucose state: render "S.E." instead of
-            // falling back to the older stored value.
+            // A fresh unavailable live reading is the newest glucose state. Do not fall back to the
+            // older stored value, but also do not call it a sensor error without patch-status proof.
             if (local.isActiveGlucoseUnavailable()) return local?.copy(mgDL = null)
             return local?.takeIf { it.usable && it.mgDL != null && isFreshGlucose(it.receivedAtMs) }
                 ?: storedReading?.takeIf { isFreshGlucose(it.receivedAtMs) }
@@ -87,6 +91,9 @@ class AodGlucoseOverlayService : AccessibilityService() {
     private val currentDisplayStatus: GlucoseDisplayStatus
         get() = when {
             sensorAttention != Libre3SensorAttention.None -> GlucoseDisplayStatus.SENSOR_ERROR
+            currentReading?.mgDL == null &&
+                isSensorWarmupActive(warmupStartedAtMs, warmupDurationMinutes) ->
+                GlucoseDisplayStatus.SENSOR_WARMUP
             localReading.isActiveGlucoseUnavailable() ||
                 (currentReading == null && connectionState.isUnavailableForGlucoseDisplay()) ->
                 GlucoseDisplayStatus.OUT_OF_RANGE
@@ -223,6 +230,19 @@ class AodGlucoseOverlayService : AccessibilityService() {
         scope.launch {
             LibreCR.store.sensorStatusFlow.collectLatest {
                 sensorAttention = it?.attention ?: Libre3SensorAttention.None
+                publishReading()
+            }
+        }
+        scope.launch {
+            LibreCR.store.sensorWarmupFlow.collectLatest {
+                warmupStartedAtMs = it?.startedAtMs
+                publishReading()
+            }
+        }
+        scope.launch {
+            LibreCR.store.sessionFlow.collectLatest {
+                warmupDurationMinutes =
+                    it?.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
                 publishReading()
             }
         }
@@ -593,7 +613,8 @@ private class AodGlucoseView(
     private fun primaryText(): String =
         reading?.mgDL?.let { glucoseUnit.format(it) } ?: when (displayStatus) {
             GlucoseDisplayStatus.SENSOR_ERROR -> context.getString(R.string.sensor_error_short)
-            GlucoseDisplayStatus.OUT_OF_RANGE -> context.getString(R.string.sensor_error_short)
+            GlucoseDisplayStatus.SENSOR_WARMUP,
+            GlucoseDisplayStatus.OUT_OF_RANGE,
             GlucoseDisplayStatus.NORMAL -> "--"
         }
 

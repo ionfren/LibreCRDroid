@@ -37,4 +37,9 @@ class GlucoseComplicationFreshnessTest {
         assertFalse(GlucoseComplicationRenderer.isFresh(null, nowMs = 1_000_000L))
         assertFalse(GlucoseComplicationRenderer.isFresh(zeroTimestamp, nowMs = 1_000_000L))
     }
+
+    @Test
+    fun `missing reading is unavailable rather than sensor error`() {
+        assertEquals("--", GlucoseComplicationRenderer.valueText(null))
+    }
 }

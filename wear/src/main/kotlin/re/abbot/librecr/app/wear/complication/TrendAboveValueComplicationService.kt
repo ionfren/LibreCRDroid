@@ -33,7 +33,7 @@ class TrendAboveValueComplicationService : TrackedComplicationDataSourceService(
 
     override suspend fun onTrackedComplicationRequest(request: ComplicationRequest): ComplicationData {
         // In-memory live value first (instant); DataStore only when the service isn't running (cold).
-        // A fresh unavailable live reading shows "S.E."; real sensor errors come from patch-status.
+        // A fresh unavailable live reading shows "--"; real sensor errors come from patch-status.
         val live = LibreCR.manager.glucose.value
         val appearance = LibreCR.appearance.current()
         val status = LibreCR.manager.sensorStatus.value

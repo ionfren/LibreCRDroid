@@ -40,6 +40,7 @@ object GlucoseLatencyTracer {
     private val traces = LinkedHashMap<Int, LinkedHashMap<Stage, Long>>()
 
     fun mark(lifeCount: Int, stage: Stage, atMs: Long = System.currentTimeMillis()) {
+        if (!BleLog.isEnabled()) return
         var anchorMs: Long? = null
         var prevStage: Stage? = null
         var prevMs: Long? = null

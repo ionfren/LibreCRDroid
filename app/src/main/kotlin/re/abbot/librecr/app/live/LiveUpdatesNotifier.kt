@@ -20,6 +20,8 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
+import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
 import re.abbot.librecr.app.MainActivity
 import re.abbot.librecr.app.R
 import re.abbot.librecr.app.isFreshGlucose
@@ -58,8 +60,8 @@ object LiveUpdatesNotifier {
     ) {
         val app = context.applicationContext
         val settings = state.settings
-        // A fresh unavailable live reading is the newest glucose state: surface a sensor error
-        // instead of keeping the previous value on the lock screen.
+        // A fresh unavailable live reading is the newest glucose state. Suppress the previous value
+        // without inventing a sensor error; real errors have their own patch-status notification.
         val unavailable = settings.enabled && state.unavailableAtMs?.let { isFreshGlucose(it) } == true
         if (unavailable) {
             ensureChannel(app)
@@ -91,9 +93,15 @@ object LiveUpdatesNotifier {
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val sensorLabel = sensorProgress(state).label(context)
+        val sensorProgress = sensorProgress(state)
+        val sensorLabel = sensorProgress.label(context)
+        val title = if (sensorProgress.isWarmingUp) {
+            context.getString(R.string.sensor_warming_up)
+        } else {
+            context.getString(R.string.standby_no_reading)
+        }
         val builder = Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle(context.getString(R.string.sensor_error))
+            .setContentTitle(title)
             .setSubText(sensorLabel)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
             .setCategory(Notification.CATEGORY_STATUS)
@@ -104,7 +112,7 @@ object LiveUpdatesNotifier {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(contentIntent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA && state.settings.statusChipEnabled) {
-            builder.setShortCriticalText(context.getString(R.string.sensor_error_short))
+            builder.setShortCriticalText("--")
         }
         return builder.build()
     }
@@ -149,12 +157,14 @@ object LiveUpdatesNotifier {
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val sensorLabel = sensorProgress.label(context)
-        val builder = Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle(primaryText(state))
-            .setContentText(secondaryText(context, state))
-            .setSubText(sensorLabel)
-            .setSettingsText(sensorLabel)
+        val usesMetricStyle = Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setContentTitle(
+                if (usesMetricStyle) null else primaryText(state),
+            )
+            .setContentText(
+                if (usesMetricStyle) metricSecondaryText(state) else secondaryText(context, state),
+            )
             .setCategory(Notification.CATEGORY_STATUS)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -164,17 +174,34 @@ object LiveUpdatesNotifier {
             .setColor(SENSOR_ACTIVE_COLOR)
             .setContentIntent(contentIntent)
 
-        if (
-            settings.statusChipEnabled &&
-            settings.showTrendInChip &&
-            TrendArrowShape.hasArrow(reading.trend)
-        ) {
-            builder.setSmallIcon(
-                Icon.createWithBitmap(trendArrowBitmap(context, reading.trend)),
+        if (!usesMetricStyle) {
+            val sensorLabel = sensorProgress.label(context)
+            builder
+                .setSubText(sensorLabel)
+                .setSettingsText(sensorLabel)
+        } else {
+            // Match Google Clock: make the MetricStyle card use the notification's dynamic
+            // small icon instead of the application's launcher icon.
+            builder.addExtras(
+                Bundle().apply {
+                    putBoolean(NotificationCompat.EXTRA_PREFER_SMALL_ICON, true)
+                },
             )
-            builder.setLargeIcon(
-                Icon.createWithBitmap(trendBadgeBitmap(context, reading.trend)),
+        }
+
+        val trendIconRes = trendNotificationIconRes(reading.trend)
+        val useTrendNotificationIcon = trendIconRes != null &&
+            (
+                usesMetricStyle ||
+                    (settings.statusChipEnabled && settings.showTrendInChip)
             )
+        if (useTrendNotificationIcon) {
+            builder.setSmallIcon(requireNotNull(trendIconRes))
+            if (!usesMetricStyle) {
+                builder.setLargeIcon(
+                    Icon.createWithBitmap(trendBadgeBitmap(context, reading.trend)),
+                )
+            }
         } else {
             builder.setSmallIcon(R.drawable.ic_launcher_monochrome)
         }
@@ -188,20 +215,12 @@ object LiveUpdatesNotifier {
     @TargetApi(Build.VERSION_CODES.BAKLAVA)
     private fun applyLiveUpdateStyle(
         context: Context,
-        builder: Notification.Builder,
+        builder: NotificationCompat.Builder,
         state: State,
         sensorProgress: SensorProgress,
     ) {
         val settings = state.settings
         val reading = requireNotNull(state.reading)
-        val max = sensorProgress.totalMinutes
-        val elapsed = sensorProgress.elapsedMinutes
-        if (max != null) {
-            builder.setProgress(max, elapsed.coerceIn(0, max), false)
-        } else {
-            builder.setProgress(0, 0, true)
-        }
-
         if (settings.statusChipEnabled) {
             builder.setShortCriticalText(LiveUpdateFormatter.chipText(reading, state.unit, settings))
         }
@@ -210,26 +229,63 @@ object LiveUpdatesNotifier {
             requestPromotedOngoing(builder)
         }
 
-        val style = Notification.ProgressStyle()
-            .setStyledByProgress(false)
-
-        if (max != null) {
-            style
-                .setProgress(elapsed.coerceIn(0, max))
-                .setProgressSegments(sensorProgressSegments(sensorProgress))
-                .setProgressTrackerIcon(Icon.createWithBitmap(sensorProgressMarkerBitmap(context, sensorProgress)))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN) {
+            builder.setStyle(metricStyle(context, state))
         } else {
-            style.setProgressIndeterminate(true)
+            val max = sensorProgress.totalMinutes
+            val elapsed = sensorProgress.elapsedMinutes
+            if (max != null) {
+                builder.setProgress(max, elapsed.coerceIn(0, max), false)
+            } else {
+                builder.setProgress(0, 0, true)
+            }
+
+            val style = NotificationCompat.ProgressStyle()
+                .setStyledByProgress(false)
+
+            if (max != null) {
+                style
+                    .setProgress(elapsed.coerceIn(0, max))
+                    .setProgressSegments(sensorProgressSegments(sensorProgress))
+                    .setProgressTrackerIcon(
+                        IconCompat.createWithBitmap(sensorProgressMarkerBitmap(context, sensorProgress)),
+                    )
+            } else {
+                style.setProgressIndeterminate(true)
+            }
+            builder.setStyle(style)
         }
-        builder.setStyle(style)
     }
 
-    private fun requestPromotedOngoing(builder: Notification.Builder) {
-        runCatching {
-            builder.javaClass
-                .getMethod("setRequestPromotedOngoing", Boolean::class.javaPrimitiveType)
-                .invoke(builder, true)
+    @TargetApi(Build.VERSION_CODES.CINNAMON_BUN)
+    private fun metricStyle(
+        context: Context,
+        state: State,
+    ): NotificationCompat.MetricStyle {
+        val reading = requireNotNull(state.reading)
+        val glucoseValue: NotificationCompat.Metric.MetricValue = when (state.unit) {
+            GlucoseUnit.MG_DL -> NotificationCompat.Metric.FixedInt(reading.mgDL)
+            GlucoseUnit.MMOL_L -> NotificationCompat.Metric.FixedFloat(
+                reading.mgDL / 18f,
+                null,
+                1,
+                1,
+            )
         }
+        return NotificationCompat.MetricStyle()
+            .addMetric(
+                NotificationCompat.Metric(
+                    glucoseValue,
+                    metricSecondaryText(state).ifBlank {
+                        context.getString(R.string.title_app)
+                    },
+                ),
+            )
+            .setCriticalMetric(GLUCOSE_METRIC_INDEX)
+    }
+
+    private fun requestPromotedOngoing(builder: NotificationCompat.Builder) {
+        builder.setRequestPromotedOngoing(true)
     }
 
     private fun primaryText(state: State): CharSequence {
@@ -254,6 +310,13 @@ object LiveUpdatesNotifier {
                 )
             }
         }
+    }
+
+    private fun metricSecondaryText(state: State): String {
+        val reading = requireNotNull(state.reading)
+        return LiveUpdateFormatter.deltaText(reading, state.unit)
+            ?.let { "$it ${state.unit.label}" }
+            .orEmpty()
     }
 
     private fun secondaryText(
@@ -291,9 +354,9 @@ object LiveUpdatesNotifier {
     }
 
     @TargetApi(Build.VERSION_CODES.BAKLAVA)
-    private fun sensorProgressSegments(progress: SensorProgress): List<Notification.ProgressStyle.Segment> {
+    private fun sensorProgressSegments(progress: SensorProgress): List<NotificationCompat.ProgressStyle.Segment> {
         val max = progress.totalMinutes ?: return emptyList()
-        return listOf(Notification.ProgressStyle.Segment(max).setColor(progress.color))
+        return listOf(NotificationCompat.ProgressStyle.Segment(max).setColor(progress.color))
     }
 
     private data class SensorProgress(
@@ -301,10 +364,12 @@ object LiveUpdatesNotifier {
         val totalMinutes: Int?,
         val warmupMinutes: Int,
     ) {
+        val isWarmingUp: Boolean get() = elapsedMinutes < warmupMinutes
+
         val color: Int
             get() = when {
                 totalMinutes != null && elapsedMinutes >= totalMinutes -> SENSOR_EXPIRED_COLOR
-                elapsedMinutes < warmupMinutes -> SENSOR_WARMUP_COLOR
+                isWarmingUp -> SENSOR_WARMUP_COLOR
                 else -> SENSOR_ACTIVE_COLOR
             }
 
@@ -345,14 +410,10 @@ object LiveUpdatesNotifier {
     )
 
     // Cache the drawn bitmaps: buildNotification runs every ~30s (live "age"/progress tick) but the
-    // trend arrow/badge only change with the trend, and the progress marker only with its color. Keys
-    // are small and bounded (≤6 trends, ≤3 colors). update() is called from a single collector.
-    private val trendArrowCache = HashMap<String, Bitmap>()
+    // trend badge only changes with the trend, and the progress marker only with its color. Keys are
+    // small and bounded (≤6 trends, ≤3 colors). update() is called from a single collector.
     private val trendBadgeCache = HashMap<String, Bitmap>()
     private val progressMarkerCache = HashMap<Int, Bitmap>()
-
-    private fun trendArrowBitmap(context: Context, trend: String?): Bitmap =
-        trendArrowCache.getOrPut(trend.orEmpty()) { createTrendArrowBitmap(context, trend) }
 
     private fun trendBadgeBitmap(context: Context, trend: String?): Bitmap =
         trendBadgeCache.getOrPut(trend.orEmpty()) { createTrendBadgeBitmap(context, trend) }
@@ -360,33 +421,15 @@ object LiveUpdatesNotifier {
     private fun sensorProgressMarkerBitmap(context: Context, progress: SensorProgress): Bitmap =
         progressMarkerCache.getOrPut(progress.color) { createSensorProgressMarkerBitmap(context, progress) }
 
-    private fun createTrendArrowBitmap(context: Context, trend: String?): Bitmap {
-        val size = (48f * context.resources.displayMetrics.density).toInt().coerceAtLeast(48)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            strokeWidth = size * TrendArrowShape.STROKE_FRACTION * 1.18f
+    private fun trendNotificationIconRes(trend: String?): Int? =
+        when (TrendArrowShape.resolvedTrend(trend)) {
+            "FALLING_QUICKLY" -> R.drawable.ic_notification_trend_falling_quickly
+            "FALLING" -> R.drawable.ic_notification_trend_falling
+            "STABLE" -> R.drawable.ic_notification_trend_stable
+            "RISING" -> R.drawable.ic_notification_trend_rising
+            "RISING_QUICKLY" -> R.drawable.ic_notification_trend_rising_quickly
+            else -> null
         }
-        val rotation = TrendArrowShape.rotationDegrees(trend) ?: 0f
-        canvas.save()
-        canvas.scale(TrendArrowShape.SCALE * 1.08f, TrendArrowShape.SCALE * 1.08f, size / 2f, size / 2f)
-        canvas.rotate(rotation, size / 2f, size / 2f)
-        TrendArrowShape.SEGMENTS.forEach { segment ->
-            canvas.drawLine(
-                segment.x0 * size,
-                segment.y0 * size,
-                segment.x1 * size,
-                segment.y1 * size,
-                paint,
-            )
-        }
-        canvas.restore()
-        return bitmap
-    }
 
     private fun createTrendBadgeBitmap(context: Context, trend: String?): Bitmap {
         val size = (72f * context.resources.displayMetrics.density).toInt().coerceAtLeast(72)
@@ -463,6 +506,7 @@ object LiveUpdatesNotifier {
     private val SENSOR_WARMUP_COLOR = 0xFF64B5F6.toInt()
     private val SENSOR_ACTIVE_COLOR = 0xFF00A676.toInt()
     private val SENSOR_EXPIRED_COLOR = 0xFFFFB454.toInt()
+    private const val GLUCOSE_METRIC_INDEX = 0
     private const val PRIMARY_TEXT_SCALE = 1.28f
     private const val PRIMARY_TREND_SCALE = 1.48f
 }

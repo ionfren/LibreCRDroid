@@ -3,4 +3,6 @@
     <string name="complication_age_delta">Time + delta/min</string>
     <string name="complication_trend_above_value">Trend above value</string>
     <string name="sensor_error">Sensor error</string>
+    <string name="sensor_unavailable">No reading</string>
+    <string name="sensor_warming_up">Sensor warmup</string>
 </resources>

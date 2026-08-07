@@ -8,6 +8,9 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -33,6 +36,9 @@ object BleLog {
     private val _log = MutableStateFlow<List<String>>(emptyList())
     val log: StateFlow<List<String>> = _log
 
+    // Restored synchronously by DiagnosticLogSettings before the watch graph starts.
+    @Volatile private var enabled = false
+
     private val timeFmt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
     // Conflated flush signal: many log() calls collapse into a single pending flush that the
@@ -41,32 +47,53 @@ object BleLog {
     private val flush = Channel<Unit>(Channel.CONFLATED)
 
     init {
+        // There is currently no on-watch log viewer, so avoid copying the full ring after every
+        // BLE burst when nobody observes this flow. Keep the public flow useful for any future
+        // viewer by publishing the current ring immediately when its first collector attaches.
+        scope.launch {
+            _log.subscriptionCount
+                .map { it > 0 }
+                .distinctUntilChanged()
+                .filter { it }
+                .collect { _log.value = snapshot() }
+        }
         scope.launch {
             for (ignored in flush) {
-                _log.value = snapshot()
-                delay(PUBLISH_INTERVAL_MS)
+                if (_log.subscriptionCount.value > 0) {
+                    _log.value = snapshot()
+                    delay(PUBLISH_INTERVAL_MS)
+                }
             }
         }
     }
 
     @Synchronized
     fun log(message: String) {
+        if (!enabled) return
         val line = "${timeFmt.format(Date())} $message"
         Log.d(TAG, line)
         lines.addLast(line)
         while (lines.size > MAX_LINES) lines.removeFirst()
-        flush.trySend(Unit)
+        if (_log.subscriptionCount.value > 0) flush.trySend(Unit)
     }
 
     /** Current ring-buffer contents, oldest→newest. Used to ship the watch log to the phone viewer. */
     @Synchronized
     fun snapshot(): List<String> = lines.toList()
 
+    fun isEnabled(): Boolean = enabled
+
+    @Synchronized
+    fun setEnabled(value: Boolean) {
+        enabled = value
+    }
+
     // Char-table nibble lookup: hex() runs on the BLE callback path for every packet, where a
     // per-byte String.format (locale lookup + parsing "%02x" each time) is needless allocation.
     private val HEX_DIGITS = "0123456789abcdef".toCharArray()
 
     fun hex(data: ByteArray): String {
+        if (!isEnabled()) return ""
         val out = CharArray(data.size * 2)
         for (i in data.indices) {
             val v = data[i].toInt() and 0xff

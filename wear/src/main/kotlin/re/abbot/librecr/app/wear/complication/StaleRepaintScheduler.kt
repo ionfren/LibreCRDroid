@@ -11,7 +11,7 @@ import re.abbot.librecr.app.log.BleLog
 /**
  * Complications freeze at whatever they last painted: with no newer reading nothing repaints
  * them, so a value past the freshness window kept LOOKING fresh until some unrelated trigger
- * repainted it — and then it snapped to S.E. at once. One while-idle alarm per reading repaints
+ * repainted it — and then it snapped to "--" at once. One while-idle alarm per reading repaints
  * right after the freshness boundary so the stale look lands on time even when both the phone
  * link and the sensor link are gone. Re-arming for a newer reading replaces the previous alarm
  * (same PendingIntent).

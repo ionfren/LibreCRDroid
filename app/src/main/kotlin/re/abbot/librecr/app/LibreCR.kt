@@ -20,6 +20,7 @@ import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.SettingsStore
 import re.abbot.librecr.app.libreview.LibreViewUploader
 import re.abbot.librecr.app.live.LiveUpdatesNotifier
+import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.stats.GlucoseSample
 import re.abbot.librecr.app.ui.standby.StandbyController
 import re.abbot.librecr.app.wear.WearDataSync
@@ -53,6 +54,25 @@ object LibreCR {
         manager = SensorConnectionManager(app, store)
         settings = SettingsStore(app)
         uploader = LibreViewUploader(app, settings, store)
+        appScope.launch {
+            settings.settingsFlow
+                .map { it.diagnosticLoggingEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    BleLog.setEnabled(enabled)
+                    WearDataSync.sendDiagnosticLoggingEnabled(app, enabled)
+                }
+        }
+        appScope.launch {
+            settings.settingsFlow
+                .map { it.selectedWearNodeId }
+                .distinctUntilChanged()
+                .collect { selectedNodeId ->
+                    if (selectedNodeId.isNotBlank()) {
+                        WearDataSync.enforceSelectedWatch(app, selectedNodeId)
+                    }
+                }
+        }
         appScope.launch {
             store.clearCurrentGlucoseIfStale()
         }

@@ -60,7 +60,7 @@ object SensorAttentionNotifier {
         Libre3SensorAttention.ReplaceSensor ->
             "Înlocuiește senzorul" to "Senzorul trebuie înlocuit."
         Libre3SensorAttention.SensorEnded ->
-            "Senzor încheiat" to "Sesiunea senzorului s-a încheiat."
+            "Senzor terminat" to "Perioada de utilizare a senzorului s-a terminat."
         is Libre3SensorAttention.Unknown ->
             "Eroare senzor" to "Cod necunoscut (${attention.code})."
         else -> "Senzor" to ""

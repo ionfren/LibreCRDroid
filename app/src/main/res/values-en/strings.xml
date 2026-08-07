@@ -7,7 +7,7 @@
     <string name="nav_stats">Statistics</string>
     <string name="nav_settings">Settings</string>
     <string name="title_app">LibreCR</string>
-    <string name="title_sensor">Sensor connection</string>
+    <string name="title_sensor">Libre 3 connection</string>
     <string name="title_alarms">Alarms</string>
     <string name="title_live_updates">Live Updates</string>
     <string name="title_floating">Floating glucose</string>
@@ -22,7 +22,7 @@
 
     <!-- Home -->
     <string name="home_chart">Chart</string>
-    <string name="home_connection">Connection</string>
+    <string name="home_connection">Libre 3 connection</string>
     <string name="range_in">in range</string>
     <string name="range_low">below target</string>
     <string name="range_high">above target</string>
@@ -39,7 +39,7 @@
     <string name="age_minutes">%1$d min ago</string>
     <string name="age_hours">%1$d h ago</string>
     <string name="status_idle">ready</string>
-    <string name="status_scanning">scanning for sensor</string>
+    <string name="status_scanning">scanning for Libre 3 sensor</string>
     <string name="status_connecting">connecting</string>
     <string name="status_handshaking">BLE authorization</string>
     <string name="status_streaming">live</string>
@@ -53,9 +53,10 @@
     <string name="standby_enable">Enable Red Standby</string>
     <string name="standby_desc">When the phone is landscape, on a wireless charger, and inside the configured time window, show a large clock, glucose and trend on a black background. The display stays landscape, the screen stays on, and the content shifts subtly for burn-in protection.</string>
     <string name="standby_hours_desc">Standby starts only between the times above. Windows crossing midnight are supported.</string>
-    <string name="sensor_section">Sensor</string>
-    <string name="sensor_waiting_status">Waiting for the first sensor status to calculate the remaining time.</string>
+    <string name="sensor_section">Libre 3 sensor</string>
+    <string name="sensor_waiting_status">Waiting for the first Libre 3 sensor status to calculate the remaining time.</string>
     <string name="sensor_warmup">Warmup</string>
+    <string name="sensor_warming_up">Sensor warmup</string>
     <string name="sensor_wear_duration">Sensor duration</string>
     <string name="sensor_warmup_remaining">%1$s remaining</string>
     <string name="sensor_duration_unavailable">duration unavailable</string>
@@ -89,7 +90,7 @@
     <string name="stats_patterns_title">Patterns</string>
     <string name="stats_agp_tab">AGP</string>
     <string name="stats_daily_tab">Daily</string>
-    <string name="stats_none">No data for this period yet. Statistics build up as the sensor streams.</string>
+    <string name="stats_none">No data for this period yet. Statistics build up as readings arrive from Libre 3.</string>
     <string name="stats_gmi_title">Glucose Management Indicator (GMI)</string>
     <string name="stats_gmi_desc">Estimates HbA1c from the average glucose over the period.</string>
     <string name="stats_tir_title">Time in range</string>
@@ -110,17 +111,29 @@
     <string name="span_hours">%1$d h</string>
 
     <!-- Settings hub -->
-    <string name="set_sensor_s">New or existing sensor</string>
+    <string name="set_sensor_s">Direct connection to a new or existing Libre 3 sensor</string>
     <string name="set_alarms_s">Thresholds, snooze, active hours</string>
     <string name="set_live_updates_s">Lock-screen chip</string>
     <string name="set_floating_s">Bubble over apps</string>
     <string name="set_aod_s">Always-On Display only</string>
-    <string name="set_wear_appearance_s">Watch appearance, colors, and complications</string>
+    <string name="set_wear_appearance_s">Active watch, appearance, colors, and complications</string>
     <string name="set_units_s">mg/dL or mmol/L, target range</string>
     <string name="set_language_s">Română, English, Français</string>
-    <string name="set_log_s">Diagnostic log</string>
+    <string name="set_log_s">On-demand diagnostics (off by default)</string>
 
     <!-- Wear appearance -->
+    <string name="wear_active_watch">Active watch</string>
+    <string name="wear_active_watch_desc">Select the watch connected to the Libre 3 sensor. Commands and readings are accepted only for this watch.</string>
+    <string name="wear_watch_automatic">Automatic (one watch)</string>
+    <string name="wear_watch_automatic_desc">Uses every available Wear connection. Not recommended when two watches are paired.</string>
+    <string name="wear_watch_saved">Selected watch</string>
+    <string name="wear_watch_disconnected">Disconnected · ID …%1$s</string>
+    <string name="wear_watch_unnamed">Wear OS watch</string>
+    <string name="wear_watch_nearby">Connected nearby · ID …%1$s</string>
+    <string name="wear_watch_remote">Connected remotely · ID …%1$s</string>
+    <string name="wear_watch_none">No connected Wear OS watch was found.</string>
+    <string name="wear_watch_load_failed">The watch list could not be loaded.</string>
+    <string name="wear_watch_refresh">Refresh list</string>
     <string name="wear_appearance_preview">Preview</string>
     <string name="wear_appearance_font_weight">Font weight</string>
     <string name="wear_appearance_glucose_value_color">Glucose value color</string>
@@ -175,7 +188,7 @@
 
     <!-- Alarms -->
     <string name="alarms_enable">Enable alarms</string>
-    <string name="alarms_desc">Thresholds are checked on every sensor reading.</string>
+    <string name="alarms_desc">Thresholds are checked on every reading from the Libre 3 sensor.</string>
     <string name="alarms_low_section">Low glucose</string>
     <string name="alarms_low">Low alarm</string>
     <string name="alarms_low_th">Low threshold</string>
@@ -204,9 +217,11 @@
 
     <!-- Log -->
     <string name="log_clear">Clear</string>
-    <string name="log_stop">Stop</string>
-    <string name="log_start">Start</string>
+    <string name="log_enable">Enable diagnostic logging</string>
+    <string name="log_enable_desc">Logging is off by default. Your choice persists across restarts and applies to both the phone and watch.</string>
+    <string name="log_phone">Phone</string>
     <string name="log_watch">Watch</string>
+    <string name="log_request_watch">Request watch log</string>
 
     <!-- Recent history + CSV import -->
     <string name="home_recent">Recent history</string>
@@ -296,7 +311,7 @@
     <string name="staleness_channel_name">Missing readings alert</string>
     <string name="staleness_channel_desc">Alerts when glucose readings stop arriving</string>
     <string name="staleness_alert_title">No glucose readings</string>
-    <string name="staleness_alert_detail">No new reading for %1$d min. Check the watch or sensor.</string>
+    <string name="staleness_alert_detail">No new reading for %1$d min. Check the watch or Libre 3 sensor.</string>
     <string name="alarms_staleness_section">Missing readings</string>
     <string name="alarms_staleness">Missing-readings alert</string>
     <string name="alarms_staleness_desc">Notifies when readings stop arriving for ~10 minutes. Follows the master switch and active hours.</string>

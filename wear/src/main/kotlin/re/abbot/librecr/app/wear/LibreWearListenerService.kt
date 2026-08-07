@@ -15,6 +15,7 @@ import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.data.ImportedSession
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.log.DiagnosticLogSettings
 import re.abbot.librecr.app.log.GlucoseLatencyTracer
 import re.abbot.librecr.app.service.SensorForegroundService
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
@@ -46,6 +47,8 @@ class LibreWearListenerService : WearableListenerService() {
             WearDataSync.PATH_GLUCOSE_REPLAY_REQUEST -> receiveReplayRequest(messageEvent.data)
             WearDataSync.PATH_WEAR_APPEARANCE -> receiveAppearance(messageEvent.data, "message")
             WearDataSync.PATH_LOG_REQUEST -> sendLog()
+            WearDataSync.PATH_DIAGNOSTIC_LOGGING ->
+                receiveDiagnosticLoggingSetting(messageEvent.data, "message")
             else -> super.onMessageReceived(messageEvent)
         }
     }
@@ -76,6 +79,8 @@ class LibreWearListenerService : WearableListenerService() {
                             event.dataItem.data?.let { receiveSensorStatus(it, "data item") }
                         path == WearDataSync.PATH_WEAR_APPEARANCE ->
                             event.dataItem.data?.let { receiveAppearance(it, "data item") }
+                        path == WearDataSync.PATH_DIAGNOSTIC_LOGGING ->
+                            event.dataItem.data?.let { receiveDiagnosticLoggingSetting(it, "data item") }
                     }
                 }
             }
@@ -135,6 +140,12 @@ class LibreWearListenerService : WearableListenerService() {
                 BleLog.log("wear: appearance receive failed: ${it.message ?: it::class.java.simpleName}")
             }
         }
+    }
+
+    private fun receiveDiagnosticLoggingSetting(bytes: ByteArray, source: String) {
+        val enabled = WearDataSync.parseDiagnosticLoggingEnabled(bytes)
+        DiagnosticLogSettings.setEnabled(this, enabled)
+        BleLog.log("wear: diagnostic logging enabled=$enabled via $source")
     }
 
     private fun receiveGlucose(bytes: ByteArray, source: String, publishLatest: Boolean) {

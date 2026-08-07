@@ -10,6 +10,7 @@ import re.abbot.librecr.app.ble.SensorConnectionManager
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceStore
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.log.DiagnosticLogSettings
 import re.abbot.librecr.app.wear.WearDataSync
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
 
@@ -32,6 +33,7 @@ object LibreCR {
     fun init(context: Context) {
         if (initialized) return
         val app = context.applicationContext
+        DiagnosticLogSettings.initialize(app)
         store = SensorStateStore(app)
         manager = SensorConnectionManager(app, store)
         appearance = WearAppearanceStore(app)

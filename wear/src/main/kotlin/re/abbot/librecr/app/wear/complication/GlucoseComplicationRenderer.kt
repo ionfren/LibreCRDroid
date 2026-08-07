@@ -42,7 +42,7 @@ object GlucoseComplicationRenderer {
         formatDelta(reading?.deltaMgDlPerMin, unit)
 
     fun valueText(reading: SensorStateStore.LastGlucose?, unit: GlucoseUnit = GlucoseUnit.MG_DL): String =
-        if (isFresh(reading)) reading?.mgDL?.let { unit.format(it) } ?: "S.E." else "S.E."
+        if (isFresh(reading)) reading?.mgDL?.let { unit.format(it) } ?: "--" else "--"
 
     fun buildAgeDeltaBitmap(
         context: Context,
@@ -118,7 +118,7 @@ object GlucoseComplicationRenderer {
         paint.strokeWidth = 0f
         val centerText = when {
             sensorError -> "S.E."
-            unavailable -> "S.E."
+            unavailable -> "--"
             !fresh && badge != null -> badge.shortText
             else -> valueText(reading, settings.unit)
         }
@@ -180,7 +180,8 @@ object GlucoseComplicationRenderer {
         unavailable: Boolean = false,
     ): String {
         val base = when {
-            sensorError || unavailable -> "$label ${context.getString(R.string.sensor_error)}"
+            sensorError -> "$label ${context.getString(R.string.sensor_error)}"
+            unavailable -> "$label ${context.getString(R.string.sensor_unavailable)}"
             reading != null ->
                 "$label ${unit.formatWithUnit(reading.mgDL)} ${trendLabel(reading.trend)} ${timeText(reading)} ${deltaText(reading, unit)}"
             else -> "$label no glucose"

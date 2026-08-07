@@ -7,7 +7,7 @@
     <string name="nav_stats">Statistiques</string>
     <string name="nav_settings">Réglages</string>
     <string name="title_app">LibreCR</string>
-    <string name="title_sensor">Connexion capteur</string>
+    <string name="title_sensor">Connexion Libre 3</string>
     <string name="title_alarms">Alarmes</string>
     <string name="title_live_updates">Live Updates</string>
     <string name="title_floating">Glycémie flottante</string>
@@ -22,7 +22,7 @@
 
     <!-- Home -->
     <string name="home_chart">Graphique</string>
-    <string name="home_connection">Connexion</string>
+    <string name="home_connection">Connexion Libre 3</string>
     <string name="range_in">dans la cible</string>
     <string name="range_low">sous la cible</string>
     <string name="range_high">au-dessus de la cible</string>
@@ -39,7 +39,7 @@
     <string name="age_minutes">il y a %1$d min</string>
     <string name="age_hours">il y a %1$d h</string>
     <string name="status_idle">prêt</string>
-    <string name="status_scanning">recherche du capteur</string>
+    <string name="status_scanning">recherche du capteur Libre 3</string>
     <string name="status_connecting">connexion</string>
     <string name="status_handshaking">autorisation BLE</string>
     <string name="status_streaming">en direct</string>
@@ -53,9 +53,10 @@
     <string name="standby_enable">Activer le standby rouge</string>
     <string name="standby_desc">Quand le téléphone est en paysage, sur un chargeur sans fil et dans la plage horaire configurée, affiche une grande horloge, la glycémie et la tendance sur fond noir. L’affichage reste en paysage, l’écran reste allumé et le contenu se déplace discrètement contre le burn-in.</string>
     <string name="standby_hours_desc">Le standby démarre seulement entre les heures ci-dessus. Les plages qui passent minuit sont prises en charge.</string>
-    <string name="sensor_section">Capteur</string>
-    <string name="sensor_waiting_status">En attente du premier statut du capteur pour calculer le temps restant.</string>
+    <string name="sensor_section">Capteur Libre 3</string>
+    <string name="sensor_waiting_status">En attente du premier statut du capteur Libre 3 pour calculer le temps restant.</string>
     <string name="sensor_warmup">Préchauffage</string>
+    <string name="sensor_warming_up">Préchauffage du capteur</string>
     <string name="sensor_wear_duration">Durée du capteur</string>
     <string name="sensor_warmup_remaining">%1$s restantes</string>
     <string name="sensor_duration_unavailable">durée indisponible</string>
@@ -89,7 +90,7 @@
     <string name="stats_patterns_title">Profils</string>
     <string name="stats_agp_tab">AGP</string>
     <string name="stats_daily_tab">Quotidien</string>
-    <string name="stats_none">Pas encore de données pour cette période. Les statistiques s\'accumulent au fil des mesures.</string>
+    <string name="stats_none">Pas encore de données pour cette période. Les statistiques s\'accumulent à mesure que les lectures du Libre 3 arrivent.</string>
     <string name="stats_gmi_title">Indicateur de gestion (GMI)</string>
     <string name="stats_gmi_desc">Estime l\'HbA1c à partir de la glycémie moyenne sur la période.</string>
     <string name="stats_tir_title">Temps dans la cible</string>
@@ -110,17 +111,29 @@
     <string name="span_hours">%1$d h</string>
 
     <!-- Settings hub -->
-    <string name="set_sensor_s">Nouveau capteur ou capteur existant</string>
+    <string name="set_sensor_s">Connexion directe à un capteur Libre 3 nouveau ou existant</string>
     <string name="set_alarms_s">Seuils, report, heures actives</string>
     <string name="set_live_updates_s">Chip sur écran verrouillé</string>
     <string name="set_floating_s">Bulle au-dessus des applis</string>
     <string name="set_aod_s">Always-On Display uniquement</string>
-    <string name="set_wear_appearance_s">Aspect de la montre, couleurs et complications</string>
+    <string name="set_wear_appearance_s">Montre active, aspect, couleurs et complications</string>
     <string name="set_units_s">mg/dL ou mmol/L, cible</string>
     <string name="set_language_s">Română, English, Français</string>
-    <string name="set_log_s">Journal de diagnostic</string>
+    <string name="set_log_s">Diagnostic à la demande (désactivé par défaut)</string>
 
     <!-- Wear appearance -->
+    <string name="wear_active_watch">Montre active</string>
+    <string name="wear_active_watch_desc">Sélectionnez la montre connectée au capteur Libre 3. Les commandes et mesures ne sont acceptées que pour cette montre.</string>
+    <string name="wear_watch_automatic">Automatique (une montre)</string>
+    <string name="wear_watch_automatic_desc">Utilise toutes les connexions Wear disponibles. Déconseillé lorsque deux montres sont associées.</string>
+    <string name="wear_watch_saved">Montre sélectionnée</string>
+    <string name="wear_watch_disconnected">Déconnectée · ID …%1$s</string>
+    <string name="wear_watch_unnamed">Montre Wear OS</string>
+    <string name="wear_watch_nearby">Connectée à proximité · ID …%1$s</string>
+    <string name="wear_watch_remote">Connectée à distance · ID …%1$s</string>
+    <string name="wear_watch_none">Aucune montre Wear OS connectée n’a été trouvée.</string>
+    <string name="wear_watch_load_failed">La liste des montres n’a pas pu être chargée.</string>
+    <string name="wear_watch_refresh">Actualiser la liste</string>
     <string name="wear_appearance_preview">Aperçu</string>
     <string name="wear_appearance_font_weight">Graisse de police</string>
     <string name="wear_appearance_glucose_value_color">Couleur de la glycémie</string>
@@ -175,7 +188,7 @@
 
     <!-- Alarms -->
     <string name="alarms_enable">Activer les alarmes</string>
-    <string name="alarms_desc">Les seuils sont vérifiés à chaque mesure du capteur.</string>
+    <string name="alarms_desc">Les seuils sont vérifiés à chaque mesure du capteur Libre 3.</string>
     <string name="alarms_low_section">Glycémie basse</string>
     <string name="alarms_low">Alarme basse</string>
     <string name="alarms_low_th">Seuil bas</string>
@@ -204,9 +217,11 @@
 
     <!-- Log -->
     <string name="log_clear">Effacer</string>
-    <string name="log_stop">Arrêter</string>
-    <string name="log_start">Démarrer</string>
+    <string name="log_enable">Activer le journal de diagnostic</string>
+    <string name="log_enable_desc">La journalisation est désactivée par défaut. Ce choix persiste après un redémarrage et s’applique au téléphone ainsi qu’à la montre.</string>
+    <string name="log_phone">Téléphone</string>
     <string name="log_watch">Montre</string>
+    <string name="log_request_watch">Demander le journal de la montre</string>
 
     <!-- Recent history + CSV import -->
     <string name="home_recent">Historique récent</string>
@@ -296,7 +311,7 @@
     <string name="staleness_channel_name">Alerte lectures manquantes</string>
     <string name="staleness_channel_desc">Alerte quand les lectures de glycémie n\'arrivent plus</string>
     <string name="staleness_alert_title">Aucune lecture de glycémie</string>
-    <string name="staleness_alert_detail">Aucune nouvelle lecture depuis %1$d min. Vérifiez la montre ou le capteur.</string>
+    <string name="staleness_alert_detail">Aucune nouvelle lecture depuis %1$d min. Vérifiez la montre ou le capteur Libre 3.</string>
     <string name="alarms_staleness_section">Lectures manquantes</string>
     <string name="alarms_staleness">Alerte lectures manquantes</string>
     <string name="alarms_staleness_desc">Notifie quand les lectures cessent d\'arriver pendant ~10 minutes. Respecte l\'interrupteur général et les heures actives.</string>

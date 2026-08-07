@@ -26,6 +26,7 @@ object GlucoseTimelineTracker {
 
     /** Wear listener: a relayed reading just arrived. [timeline] carries the watch stamps + phoneReceivedTs. */
     fun onPhoneReceived(timeline: GlucoseTimeline) {
+        if (!BleLog.isEnabled()) return
         val line: String
         synchronized(lock) {
             val prevLifeCount = lastLifeCount
@@ -58,6 +59,7 @@ object GlucoseTimelineTracker {
 
     /** Phone UI: a reading was rendered (phone clock). Completes the line for that lifeCount. */
     fun onUiRendered(lifeCount: Int, atMs: Long) {
+        if (!BleLog.isEnabled()) return
         val line: String
         synchronized(lock) {
             val base = partial[lifeCount] ?: return

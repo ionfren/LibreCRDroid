@@ -7,4 +7,6 @@
     <string name="complication_watch_battery">Baterie</string>
     <string name="sensor_error">Eroare senzor</string>
     <string name="sensor_error_short" translatable="false">S.E.</string>
+    <string name="sensor_unavailable">Fără citire</string>
+    <string name="sensor_warming_up">Încălzire senzor</string>
 </resources>

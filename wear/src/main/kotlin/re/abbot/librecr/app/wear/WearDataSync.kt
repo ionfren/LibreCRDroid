@@ -34,6 +34,7 @@ object WearDataSync {
     const val PATH_WEAR_APPEARANCE_REQUEST = "/librecr/wear_appearance/request"
     const val PATH_LOG = "/librecr/log"
     const val PATH_LOG_REQUEST = "/librecr/log/request"
+    const val PATH_DIAGNOSTIC_LOGGING = "/librecr/diagnostic_logging"
     private const val LOG_SYNC_MAX_LINES = 500
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -234,6 +235,7 @@ object WearDataSync {
      * on-demand pull keeps the full verbose buffer for deep post-mortems.
      */
     fun sendLog(context: Context, eventsOnly: Boolean = false) {
+        if (eventsOnly && !BleLog.isEnabled()) return
         val lines = BleLog.snapshot()
         val selected = if (eventsOnly) lines.filter { it.contains(EVENT_LOG_MARKER) } else lines
         val payload = selected.takeLast(LOG_SYNC_MAX_LINES).joinToString("\n").toByteArray()
@@ -254,6 +256,9 @@ object WearDataSync {
 
     fun parseAppearance(bytes: ByteArray): WearAppearanceSettings =
         WearAppearanceSettings.fromJson(String(bytes))
+
+    fun parseDiagnosticLoggingEnabled(bytes: ByteArray): Boolean =
+        bytes.firstOrNull()?.toInt() == 1
 
     fun fetchAppearance(context: Context, onAppearance: (WearAppearanceSettings) -> Unit) {
         val app = context.applicationContext

@@ -8,7 +8,7 @@
     <string name="nav_stats">Statistici</string>
     <string name="nav_settings">Setări</string>
     <string name="title_app">LibreCR</string>
-    <string name="title_sensor">Conectare senzor</string>
+    <string name="title_sensor">Conectare Libre 3</string>
     <string name="title_alarms">Alarme</string>
     <string name="title_live_updates">Live Updates</string>
     <string name="title_floating">Glucoză flotantă</string>
@@ -23,7 +23,7 @@
 
     <!-- Home -->
     <string name="home_chart">Grafic</string>
-    <string name="home_connection">Conexiune</string>
+    <string name="home_connection">Conexiune Libre 3</string>
     <string name="range_in">în țintă</string>
     <string name="range_low">sub țintă</string>
     <string name="range_high">peste țintă</string>
@@ -40,7 +40,7 @@
     <string name="age_minutes">acum %1$d min</string>
     <string name="age_hours">acum %1$d h</string>
     <string name="status_idle">gata</string>
-    <string name="status_scanning">caut senzorul</string>
+    <string name="status_scanning">caut senzorul Libre 3</string>
     <string name="status_connecting">conectare</string>
     <string name="status_handshaking">autorizare BLE</string>
     <string name="status_streaming">live</string>
@@ -54,9 +54,10 @@
     <string name="standby_enable">Activează standby roșu</string>
     <string name="standby_desc">Când telefonul este în landscape, pe încărcător wireless și în intervalul orar setat, afișează un ceas mare, glicemia și trendul pe fundal negru. Afișajul rămâne landscape, ecranul stă aprins și conținutul se mută discret pentru protecție anti burn-in.</string>
     <string name="standby_hours_desc">Standby pornește doar între orele de mai sus. Intervalele peste miezul nopții sunt acceptate.</string>
-    <string name="sensor_section">Senzor</string>
-    <string name="sensor_waiting_status">Aștept primul status de la senzor pentru a calcula durata rămasă.</string>
+    <string name="sensor_section">Senzor Libre 3</string>
+    <string name="sensor_waiting_status">Aștept primul status de la senzorul Libre 3 pentru a calcula durata rămasă.</string>
     <string name="sensor_warmup">Încălzire</string>
+    <string name="sensor_warming_up">Încălzire senzor</string>
     <string name="sensor_wear_duration">Durata senzorului</string>
     <string name="sensor_warmup_remaining">%1$s rămase</string>
     <string name="sensor_duration_unavailable">durată indisponibilă</string>
@@ -90,7 +91,7 @@
     <string name="stats_patterns_title">Tipare</string>
     <string name="stats_agp_tab">AGP</string>
     <string name="stats_daily_tab">Zilnic</string>
-    <string name="stats_none">Nu există încă date pentru această perioadă. Statisticile se acumulează pe măsură ce senzorul transmite.</string>
+    <string name="stats_none">Nu există încă date pentru această perioadă. Statisticile se acumulează pe măsură ce sosesc citirile de la Libre 3.</string>
     <string name="stats_gmi_title">Indicator de management (GMI)</string>
     <string name="stats_gmi_desc">Estimează HbA1c din glicemia medie pe perioadă.</string>
     <string name="stats_tir_title">Timp în interval</string>
@@ -111,17 +112,29 @@
     <string name="span_hours">%1$d h</string>
 
     <!-- Settings hub -->
-    <string name="set_sensor_s">Senzor nou sau existent</string>
+    <string name="set_sensor_s">Conectare directă la un senzor Libre 3 nou sau existent</string>
     <string name="set_alarms_s">Praguri, amânare, ore active</string>
     <string name="set_live_updates_s">Chip pe ecranul de blocare</string>
     <string name="set_floating_s">Bulă peste aplicații</string>
     <string name="set_aod_s">Doar Always-On Display</string>
-    <string name="set_wear_appearance_s">Aspect ceas, culori și complicații</string>
+    <string name="set_wear_appearance_s">Ceas activ, aspect, culori și complicații</string>
     <string name="set_units_s">mg/dL sau mmol/L, interval țintă</string>
     <string name="set_language_s">Română, English, Français</string>
-    <string name="set_log_s">Jurnal de diagnostic</string>
+    <string name="set_log_s">Diagnostic la cerere (implicit oprit)</string>
 
     <!-- Wear appearance -->
+    <string name="wear_active_watch">Ceas activ</string>
+    <string name="wear_active_watch_desc">Selectează ceasul conectat la senzorul Libre 3. Comenzile și citirile sunt acceptate numai pentru acest ceas.</string>
+    <string name="wear_watch_automatic">Automat (un singur ceas)</string>
+    <string name="wear_watch_automatic_desc">Folosește toate conexiunile Wear disponibile. Nu este recomandat când sunt asociate două ceasuri.</string>
+    <string name="wear_watch_saved">Ceas selectat</string>
+    <string name="wear_watch_disconnected">Deconectat · ID …%1$s</string>
+    <string name="wear_watch_unnamed">Ceas Wear OS</string>
+    <string name="wear_watch_nearby">Conectat în apropiere · ID …%1$s</string>
+    <string name="wear_watch_remote">Conectat la distanță · ID …%1$s</string>
+    <string name="wear_watch_none">Nu a fost găsit niciun ceas Wear OS conectat.</string>
+    <string name="wear_watch_load_failed">Lista ceasurilor nu a putut fi încărcată.</string>
+    <string name="wear_watch_refresh">Reîncarcă lista</string>
     <string name="wear_appearance_preview">Previzualizare</string>
     <string name="wear_appearance_font_weight">Grosimea fontului</string>
     <string name="wear_appearance_glucose_value_color">Culoarea valorii glucozei</string>
@@ -176,7 +189,7 @@
 
     <!-- Alarms -->
     <string name="alarms_enable">Activează alarmele</string>
-    <string name="alarms_desc">Pragurile sunt verificate la fiecare citire a senzorului.</string>
+    <string name="alarms_desc">Pragurile sunt verificate la fiecare citire de la senzorul Libre 3.</string>
     <string name="alarms_low_section">Glicemie scăzută</string>
     <string name="alarms_low">Alarmă jos</string>
     <string name="alarms_low_th">Prag jos</string>
@@ -205,9 +218,11 @@
 
     <!-- Log -->
     <string name="log_clear">Șterge</string>
-    <string name="log_stop">Oprește</string>
-    <string name="log_start">Pornește</string>
+    <string name="log_enable">Activează logul de diagnostic</string>
+    <string name="log_enable_desc">Logarea este implicit oprită. Alegerea se păstrează după repornire și se aplică atât telefonului, cât și ceasului.</string>
+    <string name="log_phone">Telefon</string>
     <string name="log_watch">Ceas</string>
+    <string name="log_request_watch">Solicită logul ceasului</string>
 
     <!-- Recent history + CSV import -->
     <string name="home_recent">Istoric recent</string>
@@ -297,20 +312,20 @@
     <string name="staleness_channel_name">Alertă lipsă citiri</string>
     <string name="staleness_channel_desc">Alertă când citirile de glicemie nu mai sosesc</string>
     <string name="staleness_alert_title">Fără citiri de glicemie</string>
-    <string name="staleness_alert_detail">Nicio citire nouă de %1$d min. Verifică ceasul sau senzorul.</string>
+    <string name="staleness_alert_detail">Nicio citire nouă de %1$d min. Verifică ceasul sau senzorul Libre 3.</string>
     <string name="alarms_staleness_section">Lipsă citiri</string>
     <string name="alarms_staleness">Alertă lipsă citiri</string>
     <string name="alarms_staleness_desc">Notificare când citirile nu mai sosesc de ~10 minute. Respectă comutatorul general și orele active.</string>
 
-    <!-- Sensor error: also shown when a live reading is unavailable instead of keeping a stale value -->
+    <!-- Sensor error: reserved for explicit patch-status attention -->
     <string name="sensor_error">Eroare senzor</string>
     <string name="sensor_error_short" translatable="false">S.E.</string>
 
     <!-- Sensor attention (replace / ended / unknown error) — notification + Home card -->
     <string name="sensor_attention_check_title">Verifică senzorul</string>
     <string name="sensor_attention_check_detail">Senzorul raportează o problemă de inserție.</string>
-    <string name="sensor_attention_ended_title">Senzor încheiat</string>
-    <string name="sensor_attention_ended_detail">Sesiunea senzorului s-a încheiat.</string>
+    <string name="sensor_attention_ended_title">Senzor terminat</string>
+    <string name="sensor_attention_ended_detail">Perioada de utilizare a senzorului s-a terminat.</string>
     <string name="sensor_attention_replace_title">Înlocuiește senzorul</string>
     <string name="sensor_attention_replace_detail">Senzorul a raportat o eroare și trebuie înlocuit.</string>
     <string name="sensor_attention_unknown_title">Eroare senzor</string>

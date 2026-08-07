@@ -150,7 +150,7 @@ private fun routeTitle(route: String?): String = stringResource(
         Routes.CLOUD -> R.string.title_cloud
         Routes.FLOATING -> R.string.title_floating
         Routes.AOD -> R.string.title_aod
-        Routes.WEAR_APPEARANCE -> R.string.title_wear_appearance
+        Routes.WEAR_APPEARANCE -> R.string.title_wear_os
         Routes.UNITS -> R.string.title_units
         Routes.LANGUAGE -> R.string.title_language
         Routes.LOG -> R.string.title_log

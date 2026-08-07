@@ -1,6 +1,8 @@
 package re.abbot.librecr.app.wear
 
 import android.content.Context
+import android.net.Uri
+import com.google.android.gms.wearable.DataClient
 import com.google.android.gms.wearable.PutDataRequest
 import com.google.android.gms.wearable.Wearable
 import kotlinx.coroutines.CompletableDeferred
@@ -8,14 +10,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
+import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.data.ImportedSession
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceSettings
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.protocol.dataplane.GlucoseTimeline
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 object WearDataSync {
     const val PATH_SESSION = "/librecr/session"
@@ -33,6 +39,7 @@ object WearDataSync {
     const val PATH_WEAR_APPEARANCE_REQUEST = "/librecr/wear_appearance/request"
     const val PATH_LOG = "/librecr/log"
     const val PATH_LOG_REQUEST = "/librecr/log/request"
+    const val PATH_DIAGNOSTIC_LOGGING = "/librecr/diagnostic_logging"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val pendingStopAck = AtomicReference<CompletableDeferred<Boolean>?>(null)
@@ -48,6 +55,12 @@ object WearDataSync {
         val receivedAtMs: Long,
         val reason: String,
         val detail: String,
+    )
+
+    data class ConnectedWearNode(
+        val id: String,
+        val displayName: String,
+        val isNearby: Boolean,
     )
 
     fun parseGlucose(bytes: ByteArray): SensorStateStore.LastGlucose {
@@ -83,7 +96,9 @@ object WearDataSync {
         // the sensor's ~24s mid-handshake patience runs out. All other callers pass keyless sessions.
         val payload = session.toJson().toByteArray()
         val path = if (startOnWatch) PATH_START else PATH_SESSION
-        putDataItem(context, path, payload)
+        // DataItems are network-wide. Keep that offline fallback only in automatic/single-watch
+        // mode; with an explicit selection the control command must use the targeted message below.
+        putDataItem(context, path, payload, onlyWhenRoutingIsAutomatic = true)
         sendToNearbyNodes(
             context = context,
             path = path,
@@ -230,13 +245,87 @@ object WearDataSync {
         sendToNearbyNodes(context, PATH_LOG_REQUEST, ByteArray(0))
     }
 
+    /**
+     * Keep the watch logger aligned with the phone's persistent opt-in. The data item survives a
+     * disconnected watch and the message applies the change immediately when a peer is nearby.
+     */
+    fun sendDiagnosticLoggingEnabled(context: Context, enabled: Boolean) {
+        val payload = byteArrayOf(if (enabled) 1 else 0)
+        putDataItem(context, PATH_DIAGNOSTIC_LOGGING, payload)
+        sendToNearbyNodes(context, PATH_DIAGNOSTIC_LOGGING, payload)
+    }
+
     fun parseLog(bytes: ByteArray): List<String> =
         String(bytes).split('\n').filter { it.isNotBlank() }
 
-    private fun putDataItem(context: Context, path: String, payload: ByteArray) {
+    /** Current connected Wear nodes, exposed to the settings selector. */
+    suspend fun connectedWearNodes(context: Context): List<ConnectedWearNode> =
+        suspendCancellableCoroutine { continuation ->
+            runCatching {
+                Wearable.getNodeClient(context.applicationContext).connectedNodes
+                    .addOnSuccessListener { nodes ->
+                        if (continuation.isActive) {
+                            continuation.resume(
+                                nodes
+                                    .map { ConnectedWearNode(it.id, it.displayName, it.isNearby) }
+                                    .sortedWith(
+                                        compareByDescending<ConnectedWearNode> { it.isNearby }
+                                            .thenBy { it.displayName.lowercase() }
+                                            .thenBy { it.id },
+                                    ),
+                            )
+                        }
+                    }
+                    .addOnFailureListener { failure ->
+                        if (continuation.isActive) continuation.resumeWithException(failure)
+                    }
+            }.onFailure { failure ->
+                if (continuation.isActive) continuation.resumeWithException(failure)
+            }
+        }
+
+    /** True when an inbound message/data item belongs to the selected watch (or routing is automatic). */
+    suspend fun acceptsSourceNode(sourceNodeId: String): Boolean =
+        WearNodeRouting.accepts(selectedWearNodeId(), sourceNodeId)
+
+    /**
+     * Apply a newly selected primary watch immediately:
+     * - remove legacy broadcast control DataItems so they cannot wake another watch later;
+     * - stop every currently connected non-selected watch.
+     */
+    fun enforceSelectedWatch(context: Context, selectedNodeId: String) {
+        if (selectedNodeId.isBlank()) return
+        val app = context.applicationContext
+        scope.launch {
+            enforceSelectedWatchNow(app, selectedNodeId)
+        }
+    }
+
+    /** Re-apply the persisted selection when the app or a Wear peer reconnects. */
+    fun enforcePersistedSelection(context: Context) {
+        val app = context.applicationContext
+        scope.launch {
+            val selectedNodeId = selectedWearNodeId()
+            if (selectedNodeId.isNotBlank()) enforceSelectedWatchNow(app, selectedNodeId)
+        }
+    }
+
+    private fun putDataItem(
+        context: Context,
+        path: String,
+        payload: ByteArray,
+        onlyWhenRoutingIsAutomatic: Boolean = false,
+    ) {
         val app = context.applicationContext
         scope.launch {
             runCatching {
+                if (onlyWhenRoutingIsAutomatic) {
+                    val selectedNodeId = selectedWearNodeId()
+                    if (selectedNodeId.isNotBlank()) {
+                        BleLog.log("wear: skipped broadcast data item $path; selected node=$selectedNodeId")
+                        return@runCatching
+                    }
+                }
                 val request = PutDataRequest.create(path)
                     .setData(payload)
                     .setUrgent()
@@ -255,12 +344,20 @@ object WearDataSync {
             runCatching {
                 val nodeClient = Wearable.getNodeClient(app)
                 val messageClient = Wearable.getMessageClient(app)
+                val selectedNodeId = selectedWearNodeId()
                 nodeClient.connectedNodes
                     .addOnSuccessListener { nodes ->
                         if (nodes.isEmpty()) {
                             BleLog.log("wear: no connected Wear node for $path")
                         }
-                        nodes.forEach { node ->
+                        val targetIds = WearNodeRouting.targetNodeIds(
+                            selectedNodeId,
+                            nodes.map { it.id },
+                        )
+                        if (selectedNodeId.isNotBlank() && targetIds.isEmpty()) {
+                            BleLog.log("wear: selected Wear node $selectedNodeId is not connected for $path")
+                        }
+                        nodes.filter { it.id in targetIds }.forEach { node ->
                             messageClient.sendMessage(node.id, path, payload)
                                 .addOnSuccessListener { BleLog.log("wear: sent $path to ${node.displayName} nearby=${node.isNearby}") }
                                 .addOnFailureListener { BleLog.log("wear: send $path to ${node.displayName} failed: ${it.message}") }
@@ -270,6 +367,62 @@ object WearDataSync {
             }.onFailure {
                 BleLog.log("wear: send $path unavailable: ${it.message ?: it::class.java.simpleName}")
             }
+        }
+    }
+
+    private suspend fun selectedWearNodeId(): String =
+        runCatching { LibreCR.settings.current().selectedWearNodeId }
+            .onFailure {
+                BleLog.log(
+                    "wear: selected node lookup failed; using automatic routing: " +
+                        (it.message ?: it::class.java.simpleName),
+                )
+            }
+            .getOrDefault("")
+
+    private suspend fun enforceSelectedWatchNow(context: Context, selectedNodeId: String) {
+        deleteLegacyBroadcastControlItems(context)
+        runCatching {
+            val nodes = connectedWearNodes(context)
+            val stopIds = WearNodeRouting.nonSelectedNodeIds(selectedNodeId, nodes.map { it.id })
+            if (stopIds.isEmpty()) {
+                BleLog.log("wear: selected node enforced; no other connected watches")
+                return@runCatching
+            }
+            val messageClient = Wearable.getMessageClient(context)
+            nodes.filter { it.id in stopIds }.forEach { node ->
+                messageClient.sendMessage(node.id, PATH_STOP, ByteArray(0))
+                    .addOnSuccessListener {
+                        BleLog.log("wear: stopped non-selected watch ${node.displayName}")
+                    }
+                    .addOnFailureListener {
+                        BleLog.log(
+                            "wear: stop non-selected watch ${node.displayName} failed: ${it.message}",
+                        )
+                    }
+            }
+        }.onFailure {
+            BleLog.log(
+                "wear: enforce selected node failed: ${it.message ?: it::class.java.simpleName}",
+            )
+        }
+    }
+
+    private fun deleteLegacyBroadcastControlItems(context: Context) {
+        val dataClient = Wearable.getDataClient(context)
+        listOf(PATH_START, PATH_SESSION).forEach { path ->
+            val uri = Uri.Builder()
+                .scheme("wear")
+                .authority("*")
+                .path(path)
+                .build()
+            dataClient.deleteDataItems(uri, DataClient.FILTER_LITERAL)
+                .addOnSuccessListener { deleted ->
+                    BleLog.log("wear: removed $deleted legacy broadcast data item(s) for $path")
+                }
+                .addOnFailureListener {
+                    BleLog.log("wear: remove legacy broadcast data item $path failed: ${it.message}")
+                }
         }
     }
 }

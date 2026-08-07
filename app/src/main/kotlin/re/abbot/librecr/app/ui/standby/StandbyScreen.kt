@@ -56,6 +56,7 @@ import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.ble.GlucoseDisplayStatus
 import re.abbot.librecr.app.ble.GlucoseUi
 import re.abbot.librecr.app.ble.isActiveGlucoseUnavailable
+import re.abbot.librecr.app.ble.isSensorWarmupActive
 import re.abbot.librecr.app.ble.isUnavailableForGlucoseDisplay
 import re.abbot.librecr.app.data.AppSettings
 import re.abbot.librecr.app.data.SensorStateStore
@@ -64,6 +65,7 @@ import re.abbot.librecr.app.ui.common.TrendArrow
 import re.abbot.librecr.app.ui.common.readingAgeText
 import re.abbot.librecr.app.ui.common.trendLabel
 import re.abbot.librecr.protocol.dataplane.Libre3SensorAttention
+import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 import java.text.DateFormat as JavaDateFormat
 import java.util.Date
 
@@ -100,6 +102,8 @@ fun StandbyScreen(
     val context = LocalContext.current
     val local by LibreCR.manager.glucose.collectAsState()
     val remote by LibreCR.store.lastGlucoseFlow.collectAsState(initial = null)
+    val session by LibreCR.store.sessionFlow.collectAsState(initial = null)
+    val warmup by LibreCR.store.sensorWarmupFlow.collectAsState(initial = null)
     val sensorStatus by LibreCR.store.sensorStatusFlow.collectAsState(initial = null)
     val connectionState by LibreCR.manager.state.collectAsState()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -107,8 +111,8 @@ fun StandbyScreen(
     val attention = sensorStatus?.attention ?: Libre3SensorAttention.None
     val hasSensorAttention = attention != Libre3SensorAttention.None
     val liveUnavailable = local.isActiveGlucoseUnavailable(now)
-    // A fresh unavailable live reading is the newest glucose state: show "S.E." instead of falling
-    // back to the older stored value. Real sensor errors still come from patch-status attention.
+    // A fresh unavailable live reading is the newest glucose state, so do not fall back to an older
+    // stored value. Only patch-status attention is allowed to produce a sensor-error label.
     val glucose = when {
         hasSensorAttention -> local?.copy(mgDL = null)
             ?: remote?.takeIf { isFreshGlucose(it.receivedAtMs, now) }?.toGlucoseUi()?.copy(mgDL = null, usable = false)
@@ -119,6 +123,12 @@ fun StandbyScreen(
     }
     val displayStatus = when {
         hasSensorAttention -> GlucoseDisplayStatus.SENSOR_ERROR
+        glucose?.mgDL == null &&
+            isSensorWarmupActive(
+                warmup?.startedAtMs,
+                session?.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES,
+                now,
+            ) -> GlucoseDisplayStatus.SENSOR_WARMUP
         liveUnavailable || (glucose == null && connectionState.isUnavailableForGlucoseDisplay()) -> GlucoseDisplayStatus.OUT_OF_RANGE
         else -> GlucoseDisplayStatus.NORMAL
     }
@@ -308,9 +318,10 @@ private fun StandbyGlucosePanel(
     modifier: Modifier = Modifier,
 ) {
     val value = when {
+        displayStatus == GlucoseDisplayStatus.SENSOR_WARMUP -> stringResource(R.string.sensor_warming_up)
         glucose == null -> stringResource(R.string.standby_no_reading)
         glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.SENSOR_ERROR -> stringResource(R.string.sensor_error_short)
-        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> stringResource(R.string.sensor_error_short)
+        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> "--"
         glucose.mgDL == null -> stringResource(R.string.standby_no_reading)
         else -> settings.unit.format(glucose.mgDL)
     }

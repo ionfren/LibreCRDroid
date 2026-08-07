@@ -57,6 +57,7 @@ import re.abbot.librecr.app.service.SensorForegroundService
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
 import re.abbot.librecr.protocol.TrendArrowShape
 import re.abbot.librecr.protocol.dataplane.Libre3SensorAttention
+import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -112,6 +113,7 @@ private fun WearScreen() {
     // is only the cold-start fallback (before the service has produced a reading this session).
     val live by LibreCR.manager.glucose.collectAsState()
     val persisted by LibreCR.store.lastGlucoseFlow.collectAsState(initial = null)
+    val session by LibreCR.store.sessionFlow.collectAsState(initial = null)
     val liveSensorStatus by LibreCR.manager.sensorStatus.collectAsState()
     val persistedSensorStatus by LibreCR.store.sensorStatusFlow.collectAsState(initial = null)
     val connectionState by LibreCR.manager.state.collectAsState()
@@ -120,8 +122,13 @@ private fun WearScreen() {
     val attention = sensorStatus?.attention ?: Libre3SensorAttention.None
     val liveUnavailable = live.isActiveGlucoseUnavailable()
     val baseReading = live?.toLastGlucose() ?: persisted
+    val warmingUp = liveUnavailable &&
+        live?.lifeCount?.let {
+            it < (session?.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES)
+        } == true
     val displayStatus = when {
         attention != Libre3SensorAttention.None -> WearGlucoseDisplayStatus.SENSOR_ERROR
+        warmingUp -> WearGlucoseDisplayStatus.SENSOR_WARMUP
         liveUnavailable ||
             (!isFresh(baseReading) && connectionState.isUnavailableForDisplay()) ->
             WearGlucoseDisplayStatus.OUT_OF_RANGE
@@ -129,6 +136,7 @@ private fun WearScreen() {
     }
     val statusAtMs = when (displayStatus) {
         WearGlucoseDisplayStatus.SENSOR_ERROR -> sensorStatus?.observedAtMs ?: live?.receivedAtMs
+        WearGlucoseDisplayStatus.SENSOR_WARMUP,
         WearGlucoseDisplayStatus.OUT_OF_RANGE -> live?.receivedAtMs ?: baseReading?.receivedAtMs
         WearGlucoseDisplayStatus.NORMAL -> null
     }
@@ -211,7 +219,8 @@ private fun WearReadingLayout(
         Text(
             text = when {
                 displayStatus == WearGlucoseDisplayStatus.SENSOR_ERROR -> "S.E."
-                displayStatus == WearGlucoseDisplayStatus.OUT_OF_RANGE -> "S.E."
+                displayStatus == WearGlucoseDisplayStatus.SENSOR_WARMUP -> "--"
+                displayStatus == WearGlucoseDisplayStatus.OUT_OF_RANGE -> "--"
                 mgDl != null -> appearance.unit.format(mgDl)
                 else -> "--"
             },
@@ -221,6 +230,7 @@ private fun WearReadingLayout(
             letterSpacing = 0.sp,
             color = when (displayStatus) {
                 WearGlucoseDisplayStatus.SENSOR_ERROR -> WearSensorErrorColor
+                WearGlucoseDisplayStatus.SENSOR_WARMUP,
                 WearGlucoseDisplayStatus.OUT_OF_RANGE -> composeColor(appearance.timestampStaleColor)
                 WearGlucoseDisplayStatus.NORMAL -> composeColor(appearance.glucoseColorFor(mgDl))
             },
@@ -261,7 +271,7 @@ private fun WearReadingLayout(
 /** Red accent for the live sensor-error state (matches the complications' error badge color). */
 private val WearSensorErrorColor = Color(0xFFE53935)
 
-private enum class WearGlucoseDisplayStatus { NORMAL, OUT_OF_RANGE, SENSOR_ERROR }
+private enum class WearGlucoseDisplayStatus { NORMAL, SENSOR_WARMUP, OUT_OF_RANGE, SENSOR_ERROR }
 
 private fun requiredPermissions(): Array<String> {
     val permissions = mutableListOf<String>()

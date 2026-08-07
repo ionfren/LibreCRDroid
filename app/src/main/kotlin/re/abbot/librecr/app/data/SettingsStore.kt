@@ -60,6 +60,12 @@ data class AppSettings(
     val unit: GlucoseUnit = GlucoseUnit.MG_DL,
     val targetLow: Int = 70,
     val targetHigh: Int = 180,
+    /** Diagnostic logging is opt-in and remains disabled across process/app restarts by default. */
+    val diagnosticLoggingEnabled: Boolean = false,
+    /** Blank keeps the legacy single-watch automatic routing; otherwise this is the active Wear node. */
+    val selectedWearNodeId: String = "",
+    /** Last known display name, retained so a temporarily disconnected selected watch stays visible. */
+    val selectedWearNodeName: String = "",
     /** BCP-47 language tag for the in-app locale; blank = follow the system. */
     val languageTag: String = "",
     val redStandbyEnabled: Boolean = true,
@@ -82,6 +88,9 @@ class SettingsStore(private val context: Context) {
     private val keyUnit = stringPreferencesKey("glucose_unit")
     private val keyTargetLow = intPreferencesKey("target_low")
     private val keyTargetHigh = intPreferencesKey("target_high")
+    private val keyDiagnosticLoggingEnabled = booleanPreferencesKey("diagnostic_logging_enabled")
+    private val keySelectedWearNodeId = stringPreferencesKey("selected_wear_node_id")
+    private val keySelectedWearNodeName = stringPreferencesKey("selected_wear_node_name")
     private val keyAgreementAccepted = booleanPreferencesKey("agreement_accepted")
     private val keyLanguageTag = stringPreferencesKey("language_tag")
     private val keyRedStandbyEnabled = booleanPreferencesKey("red_standby_enabled")
@@ -142,6 +151,9 @@ class SettingsStore(private val context: Context) {
             unit = displayUnit,
             targetLow = targetLow,
             targetHigh = targetHigh,
+            diagnosticLoggingEnabled = p[keyDiagnosticLoggingEnabled] ?: false,
+            selectedWearNodeId = p[keySelectedWearNodeId] ?: "",
+            selectedWearNodeName = p[keySelectedWearNodeName] ?: "",
             agreementAccepted = p[keyAgreementAccepted] ?: false,
             languageTag = p[keyLanguageTag] ?: "",
             redStandbyEnabled = p[keyRedStandbyEnabled] ?: true,
@@ -233,6 +245,15 @@ class SettingsStore(private val context: Context) {
     suspend fun setTargets(low: Int, high: Int) = edit {
         it[keyTargetLow] = low
         it[keyTargetHigh] = high
+    }
+
+    suspend fun setDiagnosticLoggingEnabled(enabled: Boolean) = edit {
+        it[keyDiagnosticLoggingEnabled] = enabled
+    }
+
+    suspend fun setSelectedWearNode(nodeId: String, displayName: String) = edit {
+        it[keySelectedWearNodeId] = nodeId
+        it[keySelectedWearNodeName] = displayName
     }
 
     suspend fun setAgreementAccepted(accepted: Boolean) = edit { it[keyAgreementAccepted] = accepted }

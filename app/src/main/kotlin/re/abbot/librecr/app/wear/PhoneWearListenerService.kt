@@ -3,6 +3,7 @@ package re.abbot.librecr.app.wear
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.WearableListenerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,19 +32,46 @@ class PhoneWearListenerService : WearableListenerService() {
         super.onDestroy()
     }
 
+    override fun onPeerConnected(peer: Node) {
+        super.onPeerConnected(peer)
+        WearDataSync.enforcePersistedSelection(this)
+    }
+
     override fun onMessageReceived(messageEvent: MessageEvent) {
-        when (messageEvent.path) {
-            WearDataSync.PATH_SESSION,
-            WearDataSync.PATH_START -> receiveSession(messageEvent)
-            WearDataSync.PATH_STOP -> stopLocalConnection()
-            WearDataSync.PATH_STOPPED -> WearDataSync.notifyStopAck(messageEvent.data)
-            WearDataSync.PATH_GLUCOSE -> receiveGlucose(messageEvent.data, "message", publishLatest = true)
-            WearDataSync.PATH_GLUCOSE_UNAVAILABLE -> receiveGlucoseUnavailable(messageEvent.data, "message")
-            WearDataSync.PATH_GLUCOSE_REPLAY -> receiveGlucose(messageEvent.data, "message replay", publishLatest = false)
-            WearDataSync.PATH_SENSOR_STATUS -> receiveSensorStatus(messageEvent.data, "message")
-            WearDataSync.PATH_LOG -> ingestWatchLog(messageEvent.data)
-            WearDataSync.PATH_WEAR_APPEARANCE_REQUEST -> sendAppearance()
-            else -> super.onMessageReceived(messageEvent)
+        val sourceNodeId = messageEvent.sourceNodeId
+        val path = messageEvent.path
+        val data = messageEvent.data.copyOf()
+        val phoneReceivedTs = System.currentTimeMillis()
+        scope.launch {
+            if (!WearDataSync.acceptsSourceNode(sourceNodeId)) {
+                BleLog.log("wear: ignored $path from non-selected node=$sourceNodeId")
+                return@launch
+            }
+            when (path) {
+                WearDataSync.PATH_SESSION,
+                WearDataSync.PATH_START -> receiveSession(data)
+                WearDataSync.PATH_STOP -> stopLocalConnection()
+                WearDataSync.PATH_STOPPED -> WearDataSync.notifyStopAck(data)
+                WearDataSync.PATH_GLUCOSE ->
+                    receiveGlucose(
+                        data,
+                        "message",
+                        publishLatest = true,
+                        phoneReceivedTs = phoneReceivedTs,
+                    )
+                WearDataSync.PATH_GLUCOSE_UNAVAILABLE ->
+                    receiveGlucoseUnavailable(data, "message")
+                WearDataSync.PATH_GLUCOSE_REPLAY ->
+                    receiveGlucose(
+                        data,
+                        "message replay",
+                        publishLatest = false,
+                        phoneReceivedTs = phoneReceivedTs,
+                    )
+                WearDataSync.PATH_SENSOR_STATUS -> receiveSensorStatus(data, "message")
+                WearDataSync.PATH_LOG -> ingestWatchLog(data)
+                WearDataSync.PATH_WEAR_APPEARANCE_REQUEST -> sendAppearance()
+            }
         }
     }
 
@@ -52,14 +80,33 @@ class PhoneWearListenerService : WearableListenerService() {
             for (event in dataEvents) {
                 if (event.type != DataEvent.TYPE_CHANGED) continue
                 val path = event.dataItem.uri.path ?: continue
-                if (path == WearDataSync.PATH_GLUCOSE) {
-                    event.dataItem.data?.let { receiveGlucose(it, "data item", publishLatest = true) }
-                } else if (path == WearDataSync.PATH_GLUCOSE_UNAVAILABLE) {
-                    event.dataItem.data?.let { receiveGlucoseUnavailable(it, "data item") }
-                } else if (path.startsWith(WearDataSync.PATH_GLUCOSE_REPLAY_PREFIX)) {
-                    event.dataItem.data?.let { receiveGlucose(it, "data item replay", publishLatest = false) }
-                } else if (path == WearDataSync.PATH_SENSOR_STATUS) {
-                    event.dataItem.data?.let { receiveSensorStatus(it, "data item") }
+                val sourceNodeId = event.dataItem.uri.host.orEmpty()
+                val data = event.dataItem.data?.copyOf() ?: continue
+                val phoneReceivedTs = System.currentTimeMillis()
+                scope.launch {
+                    if (!WearDataSync.acceptsSourceNode(sourceNodeId)) {
+                        BleLog.log("wear: ignored data item $path from non-selected node=$sourceNodeId")
+                        return@launch
+                    }
+                    if (path == WearDataSync.PATH_GLUCOSE) {
+                        receiveGlucose(
+                            data,
+                            "data item",
+                            publishLatest = true,
+                            phoneReceivedTs = phoneReceivedTs,
+                        )
+                    } else if (path == WearDataSync.PATH_GLUCOSE_UNAVAILABLE) {
+                        receiveGlucoseUnavailable(data, "data item")
+                    } else if (path.startsWith(WearDataSync.PATH_GLUCOSE_REPLAY_PREFIX)) {
+                        receiveGlucose(
+                            data,
+                            "data item replay",
+                            publishLatest = false,
+                            phoneReceivedTs = phoneReceivedTs,
+                        )
+                    } else if (path == WearDataSync.PATH_SENSOR_STATUS) {
+                        receiveSensorStatus(data, "data item")
+                    }
                 }
             }
         } finally {
@@ -67,10 +114,12 @@ class PhoneWearListenerService : WearableListenerService() {
         }
     }
 
-    private fun receiveGlucose(bytes: ByteArray, source: String, publishLatest: Boolean) {
-        // Stamp arrival on the binder thread, before any coroutine dispatch, so the cross-device
-        // hop (sent→phoneReceived) isn't inflated by scheduler latency.
-        val phoneReceivedTs = System.currentTimeMillis()
+    private fun receiveGlucose(
+        bytes: ByteArray,
+        source: String,
+        publishLatest: Boolean,
+        phoneReceivedTs: Long,
+    ) {
         scope.launch {
             runCatching {
                 val reading = WearDataSync.parseGlucose(bytes)
@@ -164,10 +213,10 @@ class PhoneWearListenerService : WearableListenerService() {
         }
     }
 
-    private fun receiveSession(messageEvent: MessageEvent) {
+    private fun receiveSession(bytes: ByteArray) {
         scope.launch {
             runCatching {
-                val session = ImportedSession.fromJson(String(messageEvent.data)).withoutTransientCrypto()
+                val session = ImportedSession.fromJson(String(bytes)).withoutTransientCrypto()
                 LibreCR.store.saveSession(session, preserveCachedKeyWhenKeyless = true)
                 BleLog.log("wear: phone saved provisioning update from watch for ${session.bleAddress}")
             }.onFailure {

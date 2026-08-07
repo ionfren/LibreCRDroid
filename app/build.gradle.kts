@@ -30,7 +30,7 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "re.abbot.librecr.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "re.abbot.librecr.app"
@@ -86,7 +86,7 @@ android {
 dependencies {
     implementation(project(":protocol"))
 
-    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
