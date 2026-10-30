@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="ro">
+    <string name="idrive_display_mode">Afișare în mașină</string>
+    <string name="idrive_display_auto">Automat</string>
+    <string name="idrive_display_split">Split screen · cu hartă laterală</string>
+    <string name="idrive_display_full">Ecran complet</string>
+    <string name="idrive_display_description">Automat adaptează ecranul la modul raportat de mașină. Dacă nu este detectat, selectează Ecran complet sau Split screen aici. În ecran complet se mărește graficul; cardul de glicemie își păstrează dimensiunea. Modificarea se aplică imediat.</string>
+    <string name="idrive_reading">Glicemie</string>
+    <string name="idrive_waiting_reading">Așteaptă o citire nouă</string>
+    <string name="idrive_diagnostics_title">Diagnostic conexiune</string>
+    <string name="idrive_copy_diagnostics">Copiază diagnosticul</string>
+    <string name="idrive_title">BMW iDrive</string>
+    <string name="idrive_car_title">LibreCR · Glicemie</string>
+    <string name="idrive_settings_subtitle">Ecran de glicemie prin addon AAIdrive</string>
+    <string name="idrive_enable">Ecran dedicat în iDrive</string>
+    <string name="idrive_description">Afișează glicemia, trendul, delta și graficul ultimelor trei ore în carduri Material 3. Folosește unitatea și intervalul țintă din aplicație, cu citiri de pe telefon sau ceas.</string>
+    <string name="idrive_disabled">Ecran dezactivat</string>
+    <string name="idrive_install">Instalează AAIdrive pentru a folosi addonul.</string>
+    <string name="idrive_waiting">Așteaptă conexiunea AAIdrive cu mașina</string>
+    <string name="idrive_authenticating">Așteaptă serviciul de securitate BMW/MINI. Verifică aplicațiile de conectare folosite de AAIdrive.</string>
+    <string name="idrive_connecting">Conectare la iDrive…</string>
+    <string name="idrive_connected">Ecran înregistrat în iDrive</string>
+    <string name="idrive_resources_missing">Resurse AAIdrive indisponibile. Folosește versiunea oficială AAIdrive și reconectează telefonul.</string>
+    <string name="idrive_retrying">Conexiune întreruptă sau autentificare nereușită. Reîncearcă automat.</string>
+    <string name="idrive_open_aaidrive">Deschide AAIdrive</string>
+    <string name="idrive_setup_title">Conectare</string>
+    <string name="idrive_setup">1. Activează ecranul dedicat aici.\n2. Deschide AAIdrive și verifică LibreCRDroid în Addons.\n3. Conectează telefonul la BMW prin Connected Apps. Dacă era deja conectat la instalare, reconectează-l.\n4. Ecranul LibreCR · Glicemie se deschide automat după conectare. Îl poți redeschide din meniul Connected Apps / ConnectedDrive al mașinii.</string>
+    <string name="idrive_limits">Integrare experimentală pentru NBT/NBT Evo. Necesită AAIdrive instalat și conexiunea sa BMW/MINI funcțională. Datele vechi sunt ascunse după șase minute. Ecranul ocupă propria pagină iDrive. Păstrează alarmele de glicemie de pe telefon sau ceas active.</string>
+    <string name="idrive_chart_title">Evoluție glicemie</string>
+    <string name="idrive_chart_title_short">Evoluție</string>
+    <string name="idrive_chart_target">Țintă %1$s–%2$s %3$s</string>
+    <string name="idrive_chart_empty">Nu există citiri în ultimele trei ore</string>
+</resources>

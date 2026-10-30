@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="28dp"
+    android:background="@drawable/glucose_widget_preview_chip"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp">
+
+    <ImageView
+        android:layout_width="8dp"
+        android:layout_height="8dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/glucose_widget_shape_circle"
+        android:tint="@color/glucose_widget_in_range" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:fontFamily="variable-label-large-emphasized"
+        android:maxLines="1"
+        android:text="@string/widget_range_in"
+        android:textColor="@color/glucose_widget_on_in_range_container"
+        android:textSize="13sp" />
+</LinearLayout>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_android_auto_s">Glucose notifications in the car</string>
+    <string name="auto_notification_enable">Persistent notifications</string>
+    <string name="auto_notification_description">Shows glucose in mg/dL, trend, delta per minute and reading age while your phone is connected to Android Auto. Updates are silent after the first appearance.</string>
+    <string name="auto_notification_disabled">Disabled</string>
+    <string name="auto_notification_connected">Android Auto connected</string>
+    <string name="auto_notification_waiting">Will appear when Android Auto connects</string>
+    <string name="auto_notification_permission">Allow LibreCRDroid notifications to show the card.</string>
+    <string name="auto_notification_system_settings">Notification settings</string>
+    <string name="auto_notification_setup">Enable in Android Auto</string>
+    <string name="auto_notification_sideload">For a manually installed APK: in Android Auto settings on the phone, tap Version 10 times to enable developer mode. Open Developer settings from the ⋮ menu and enable Unknown sources. Android’s permission to install APKs is a separate setting.</string>
+    <string name="auto_notification_posted">The notification has been posted on the phone. Display in the car depends on the Android Auto settings below.</string>
+    <string name="auto_notification_hidden">The card was dismissed or marked as read. You can send it again.</string>
+    <string name="auto_notification_failed">The notification could not be posted. Try again.</string>
+    <string name="auto_notification_sending">Preparing the notification…</string>
+    <string name="auto_notification_resend">Send notification again</string>
+    <string name="auto_notification_preview">Example content</string>
+    <string name="auto_notification_limits">Experimental feature. Android Auto controls the card’s appearance and display duration. A short banner may appear on activation. If you dismiss the card, it stays hidden until reconnecting or switching this option off and on.</string>
+    <string name="auto_notification_car_settings">In Android Auto settings, enable message notifications and showing the first line of messages.</string>
+    <string name="auto_notification_channel">Android Auto glucose</string>
+    <string name="auto_notification_channel_description">Glucose card updated only during an Android Auto connection.</string>
+    <string name="auto_notification_private">Private update hidden on the lock screen</string>
+    <string name="auto_notification_refresh">Refresh</string>
+    <string name="auto_notification_dismiss">Hide</string>
+    <string name="auto_notification_disable">Turn off</string>
+</resources>

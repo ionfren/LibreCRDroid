@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Chronometer xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_reading_age"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:ellipsize="end"
+    android:fontFamily="variable-label-large"
+    android:includeFontPadding="false"
+    android:maxLines="1"
+    android:textSize="12sp" />

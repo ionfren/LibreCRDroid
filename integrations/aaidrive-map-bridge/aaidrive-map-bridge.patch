@@ -1,0 +1,777 @@
+--- a/app/src/gmap/AndroidManifest.xml
++++ b/app/src/gmap/AndroidManifest.xml
+@@ -14,5 +14,7 @@
+                 <action android:name="me.hufman.androidautoidrive.carconnection.service" />
+             </intent-filter>
+         </service>
++        <!-- Map-only IPC, restricted to the LibreCR UID inside the service. -->
++        <service android:name=".carapp.maps.LibreCRMapService" android:exported="true" />
+     </application>
+ </manifest>
+\ No newline at end of file
+--- a/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsController.kt
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsController.kt
+@@ -198,6 +198,8 @@
+ 	}
+ 
+ 	private fun drawNavigation() {
++		LibreCRMapRoute.publish(navController.currentNavDestination, navController.currentNavRoute,
++			navController.status, navController.distanceMeters, navController.durationSeconds)
+ 		// make sure we are in the UI thread, and then draw navigation lines onto it
+ 		// because route search comes back on a network thread
+ 		val action = {
+@@ -240,4 +242,4 @@
+ 		// clear out previous nav
+ 		navController.stopNavigation()
+ 	}
+-}
+\ No newline at end of file
++}
+--- a/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/MapAppService.kt
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/MapAppService.kt
+@@ -53,6 +53,8 @@
+ 	}
+ 
+ 	override fun onCarStop() {
++		mapController?.stopNavigation()
++		LibreCRMapRoute.publish(null, null)
+ 		mapAppMode?.currentNavDestination = null
+ 
+ 		// shut down maps functionality right away
+@@ -76,4 +78,4 @@
+ 		mapApp?.disconnect()
+ 		mapApp = null
+ 	}
+-}
+\ No newline at end of file
++}
+--- a/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsProjection.kt
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsProjection.kt
+@@ -20,7 +20,7 @@
+ import me.hufman.androidautoidrive.utils.TimeUtils
+ import java.util.*
+ 
+-class GMapsProjection(val parentContext: Context, display: Display, val appSettings: AppSettingsObserver, val locationSource: GMapsLocationSource): Presentation(parentContext, display), OnMapsSdkInitializedCallback {
++class GMapsProjection(val parentContext: Context, display: Display, val appSettings: AppSettingsObserver, val locationSource: GMapsLocationSource, val insetForSidebar: Boolean = true): Presentation(parentContext, display), OnMapsSdkInitializedCallback {
+ 	val TAG = "GMapsProjection"
+ 	var map: GoogleMap? = null
+ 	var mapListener: Runnable? = null
+@@ -82,8 +82,8 @@
+ 	fun applySettings() {
+ 		// the narrow-screen option centers the viewport to the middle of the display
+ 		// so update the map's margin to match
+-		val margin = (fullDimensions.appWidth - sidebarDimensions.appWidth) / 2
+-		map?.setPadding(margin, 0, margin, 0)
++		val margin = if (insetForSidebar) (fullDimensions.appWidth - sidebarDimensions.appWidth) / 2 else 16
++		map?.setPadding(margin, 0, margin, if (insetForSidebar) 0 else 16)
+ 
+ 		val style = appSettings[AppSettings.KEYS.GMAPS_STYLE].lowercase(Locale.ROOT)
+ 
+--- a/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsNavController.kt
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsNavController.kt
+@@ -5,6 +5,7 @@
+ import android.util.Log
+ import com.google.android.gms.maps.model.LatLng
+ import com.google.maps.DirectionsApi
++import com.google.maps.DirectionsApiRequest
+ import com.google.maps.GeoApiContext
+ import com.google.maps.PendingResult
+ import com.google.maps.model.DirectionsResult
+@@ -13,7 +14,9 @@
+ import me.hufman.androidautoidrive.maps.LatLong
+ import java.util.concurrent.TimeUnit
+ 
+-class GMapsNavController(val geoClient: GeoApiContext, val locationProvider: CarLocationProvider, var callback: (GMapsNavController) -> Unit) {
++class GMapsNavController(val geoClient: GeoApiContext, val locationProvider: CarLocationProvider,
++                         var callback: (GMapsNavController) -> Unit,
++                         private val requestFactory: (GeoApiContext) -> DirectionsApiRequest = { DirectionsApi.newRequest(it) }) {
+ 	companion object {
+ 		fun getInstance(context: Context, locationProvider: CarLocationProvider, callback: (GMapsNavController) -> Unit): GMapsNavController {
+ 			val api_key = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+@@ -31,46 +34,76 @@
+ 		private set
+ 	var currentNavRoute: List<LatLng>? = null
+ 		private set
++	var status = "IDLE"
++		private set
++	var distanceMeters = 0L
++		private set
++	var durationSeconds = 0L
++		private set
++	private var requestGeneration = 0L
++	private var request: PendingResult<DirectionsResult>? = null
+ 
+-	fun navigateTo(dest: LatLong) {
++	@Synchronized fun navigateTo(dest: LatLong) {
++		requestGeneration++
++		request?.cancel()
++		request = null
+ 		currentNavDestination = dest
+-
+-		val currentLocation = locationProvider.currentLocation ?: return
+-		routeNavigation(LatLong(currentLocation.latitude, currentLocation.longitude), dest)
++		currentNavRoute = null
++		distanceMeters = 0L
++		durationSeconds = 0L
++		val currentLocation = locationProvider.currentLocation
++		status = if (currentLocation == null) "NO_LOCATION" else "CALCULATING"
++		callback(this)
++		if (currentLocation != null) routeNavigation(LatLong(currentLocation.latitude, currentLocation.longitude), dest, requestGeneration)
+ 	}
+ 
+-	fun stopNavigation() {
++	@Synchronized fun stopNavigation() {
++		requestGeneration++
++		request?.cancel()
++		request = null
+ 		currentNavDestination = null
+ 		currentNavRoute = null
++		status = "IDLE"
++		distanceMeters = 0L
++		durationSeconds = 0L
+ 		callback(this)
+ 	}
+ 
+-	private fun routeNavigation(start: LatLong, dest: LatLong) {
++	private fun routeNavigation(start: LatLong, dest: LatLong, generation: Long) {
+ 		// start a route search
+ 		val origin = com.google.maps.model.LatLng(start.latitude, start.longitude)
+ 		val routeDest = com.google.maps.model.LatLng(dest.latitude, dest.longitude)
+ 
+-		val directionsRequest = DirectionsApi.newRequest(geoClient)
++		val directionsRequest = requestFactory(geoClient)
+ 				.mode(TravelMode.DRIVING)
+ 				.origin(origin)
+ 				.destination(routeDest)
++		request = directionsRequest
+ 		directionsRequest.setCallback(object: PendingResult.Callback<DirectionsResult> {
+ 			override fun onFailure(e: Throwable?) {
+-				Log.w(TAG, "Failed to find route! $e")
+-//				throw e ?: return
++				synchronized(this@GMapsNavController) {
++					if (generation != requestGeneration) return
++					status = "ERROR"
++					callback(this@GMapsNavController)
++				}
+ 			}
+ 
+ 			override fun onResult(result: DirectionsResult?) {
+-				if (result == null || result.routes.isEmpty()) { return }
+-				Log.i(TAG, "Adding route to map")
+-				// this needs to be on the main thread
+-				val decodedPath = result.routes[0].overviewPolyline.decodePath()
+-				currentNavRoute = decodedPath.map {
+-					// convert from route LatLng to map LatLng
+-					LatLng(it.lat, it.lng)
++				synchronized(this@GMapsNavController) {
++					if (generation != requestGeneration) return
++					val route = result?.routes?.firstOrNull()
++					val decodedPath = route?.overviewPolyline?.decodePath()
++					if (decodedPath.isNullOrEmpty()) {
++						status = "ERROR"
++					} else {
++						currentNavRoute = decodedPath.map { LatLng(it.lat, it.lng) }
++						distanceMeters = route.legs?.sumOf { it.distance?.inMeters ?: 0L } ?: 0L
++						durationSeconds = route.legs?.sumOf { it.duration?.inSeconds ?: 0L } ?: 0L
++						status = "ACTIVE"
++					}
++					callback(this@GMapsNavController)
+ 				}
+-				callback(this@GMapsNavController)
+ 			}
+ 		})
+ 	}
+-}
+\ No newline at end of file
++}
+--- /dev/null
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/LibreCRMapRoute.kt
+@@ -0,0 +1,17 @@
++package me.hufman.androidautoidrive.carapp.maps
++
++import androidx.lifecycle.MutableLiveData
++import com.google.android.gms.maps.model.LatLng
++import me.hufman.androidautoidrive.maps.LatLong
++
++/** Shares the route already calculated by AAIdrive without another Directions API request. */
++object LibreCRMapRoute {
++    data class Snapshot(val destination: LatLng?, val points: List<LatLng>,
++                        val status: String = "IDLE", val distanceMeters: Long = 0, val durationSeconds: Long = 0)
++    val current = MutableLiveData<Snapshot>()
++    fun publish(destination: LatLong?, route: List<LatLng>?, status: String = "IDLE",
++                distanceMeters: Long = 0, durationSeconds: Long = 0) {
++        current.postValue(Snapshot(destination?.let { LatLng(it.latitude, it.longitude) }, route?.toList().orEmpty(),
++            status, distanceMeters, durationSeconds))
++    }
++}
+--- /dev/null
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/carapp/maps/LibreCRMapService.kt
+@@ -0,0 +1,355 @@
++package me.hufman.androidautoidrive.carapp.maps
++
++import android.app.Service
++import android.content.Intent
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.graphics.Rect
++import android.hardware.display.DisplayManager
++import android.hardware.display.VirtualDisplay
++import android.media.ImageReader
++import android.graphics.PixelFormat
++import android.os.*
++import com.google.android.gms.maps.CameraUpdateFactory
++import com.google.android.gms.maps.model.CameraPosition
++import com.google.android.gms.maps.model.LatLng
++import com.google.android.gms.maps.model.PolylineOptions
++import com.google.android.gms.maps.model.MarkerOptions
++import androidx.lifecycle.Observer
++import me.hufman.androidautoidrive.*
++import me.hufman.androidautoidrive.cds.CDSDataProvider
++import me.hufman.androidautoidrive.maps.CdsLocationProvider
++import me.hufman.androidautoidrive.maps.GMapsPlaceSearch
++import me.hufman.androidautoidrive.maps.MapResult
++import kotlinx.coroutines.*
++import java.io.ByteArrayOutputStream
++
++/** Explicit, UID-checked map-only bridge. No glucose or API credentials cross this boundary. */
++class LibreCRMapService : Service() {
++    companion object {
++        const val CLIENT_PACKAGE = "re.abbot.librecr.app"
++        const val VERSION = 1
++        const val REQUEST_FRAME = 1
++        const val FRAME = 2
++        const val SEARCH = 3
++        const val RESULTS = 4
++        const val NAVIGATE = 5
++        const val NAVIGATION = 6
++        const val STOP_NAVIGATION = 7
++        const val RECALCULATE = 8
++        const val CONTROLS_VERSION = 1
++        const val READY = 1
++        const val LOADING = 2
++        const val DISCONNECTED = 3
++        const val DISABLED = 4
++        const val ERROR = 5
++        const val MAX_FRAME_BYTES = 512 * 1024
++        private const val IDLE_TIMEOUT_MS = 5000L
++    }
++
++    private val main = Handler(Looper.getMainLooper())
++    private val commands = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
++    private var searchJob: Job? = null
++    private var navigationJob: Job? = null
++    private var placeSearch: GMapsPlaceSearch? = null
++    private var suggestions = emptyList<MapResult>()
++    private var destinationName: String? = null
++    private var namedDestination: LatLng? = null
++    private val captureThread = HandlerThread("LibreCR-MapCapture")
++    private lateinit var captureHandler: Handler
++    private lateinit var messenger: Messenger
++    private var reader: ImageReader? = null
++    private var display: VirtualDisplay? = null
++    private var projection: GMapsProjection? = null
++    private var location: CdsLocationProvider? = null
++    private var cdsData: CDSDataProvider? = null
++    private var settings: MutableAppSettingsReceiver? = null
++    private var size: Pair<Int, Int>? = null
++    @Volatile private var generation = 0
++    private var lastRequestMs = 0L
++    @Volatile private var lastCaptureMs = 0L
++    private var jpeg: ByteArray? = null
++    private var sequence = 0L
++    private var mapLoaded = false
++    private var retryAt = 0L
++    private val routeObserver = Observer<LibreCRMapRoute.Snapshot> { drawRoute(it) }
++    private val idle = object : Runnable {
++        override fun run() {
++            if (SystemClock.elapsedRealtime() - lastRequestMs >= IDLE_TIMEOUT_MS) releaseMap()
++            else main.postDelayed(this, IDLE_TIMEOUT_MS)
++        }
++    }
++
++    override fun onCreate() {
++        super.onCreate()
++        captureThread.start()
++        captureHandler = Handler(captureThread.looper)
++        messenger = Messenger(Handler(Looper.getMainLooper()) { message ->
++            if (isTrustedUid(message.sendingUid)) {
++                if (message.what == REQUEST_FRAME) handleRequest(message)
++                else handleCommand(message)
++            }
++            true
++        })
++    }
++
++    internal fun isTrustedUid(uid: Int): Boolean =
++        packageManager.getPackagesForUid(uid)?.contains(CLIENT_PACKAGE) == true
++
++    override fun onBind(intent: Intent?): IBinder = messenger.binder
++
++    private fun handleRequest(message: Message) {
++        val reply = message.replyTo ?: return
++        val request = message.data
++        val requestId = request.getLong("requestId", -1L)
++        if (request.getInt("version") != VERSION) { respond(reply, ERROR, requestId); return }
++        if (!CarInformation.isConnected) { releaseMap(); respond(reply, DISCONNECTED, requestId); return }
++        if (!AppSettingsViewer()[AppSettings.KEYS.ENABLED_MAPS].toBoolean()) {
++            releaseMap(); respond(reply, DISABLED, requestId); return
++        }
++        val width = request.getInt("width")
++        val height = request.getInt("height")
++        if (width !in 160..960 || height !in 160..540) { respond(reply, ERROR, requestId); return }
++        if (SystemClock.elapsedRealtime() < retryAt) { respond(reply, ERROR, requestId); return }
++        lastRequestMs = SystemClock.elapsedRealtime()
++        try {
++            if (size != (width to height)) createMap(width, height)
++            main.removeCallbacks(idle)
++            main.postDelayed(idle, IDLE_TIMEOUT_MS)
++            respond(reply, if (mapLoaded && jpeg != null) READY else LOADING, requestId)
++        } catch (_: Exception) {
++            releaseMap()
++            retryAt = SystemClock.elapsedRealtime() + 5000L
++            respond(reply, ERROR, requestId)
++        }
++    }
++
++    private fun respond(reply: Messenger, status: Int, requestId: Long) {
++        val response = Message.obtain(null, FRAME).apply {
++            data = Bundle().apply {
++                putInt("version", VERSION)
++                putInt("controlsVersion", CONTROLS_VERSION)
++                putLong("requestId", requestId)
++                putInt("status", status)
++                putLong("sequence", sequence)
++                putBoolean("widescreen", AppSettingsViewer()[AppSettings.KEYS.MAP_WIDESCREEN].toBoolean())
++                putNavigation(this)
++                if (status == READY) putByteArray("jpeg", jpeg)
++            }
++        }
++        try { reply.send(response) } catch (_: RemoteException) { releaseMap() }
++    }
++
++    private fun putNavigation(data: Bundle) {
++        val route = LibreCRMapRoute.current.value
++        data.putString("navigationStatus", route?.status ?: "IDLE")
++        data.putLong("distanceMeters", route?.distanceMeters ?: 0L)
++        data.putLong("durationSeconds", route?.durationSeconds ?: 0L)
++        data.putString("destinationName", destinationName?.takeIf { route?.destination == namedDestination })
++    }
++
++    private fun commandReply(reply: Messenger, type: Int, requestId: Long, status: String,
++                             results: List<MapResult> = emptyList()) {
++        try {
++            reply.send(Message.obtain(null, type).apply {
++                data = Bundle().apply {
++                    putInt("version", VERSION)
++                    putLong("requestId", requestId)
++                    putString("commandStatus", status)
++                    putNavigation(this)
++                    if (type == RESULTS) putParcelableArrayList("results", ArrayList(results.map { result ->
++                        Bundle().apply {
++                            putString("id", result.id)
++                            putString("name", result.name.take(200))
++                            putString("address", result.address?.take(300))
++                        }
++                    }))
++                }
++            })
++        } catch (_: RemoteException) { /* The client may leave the search screen. */ }
++    }
++
++    private fun handleCommand(message: Message) {
++        if (message.what !in listOf(SEARCH, NAVIGATE, STOP_NAVIGATION, RECALCULATE)) return
++        val reply = message.replyTo ?: return
++        val id = message.data.getLong("requestId", -1L)
++        val type = if (message.what == SEARCH) RESULTS else NAVIGATION
++        if (message.data.getInt("version") != VERSION || !CarInformation.isConnected ||
++            !AppSettingsViewer()[AppSettings.KEYS.ENABLED_MAPS].toBoolean() || location == null) {
++            commandReply(reply, type, id, "UNAVAILABLE")
++            return
++        }
++        val interaction = MapInteractionControllerIntent(this)
++        when (message.what) {
++            SEARCH -> {
++                searchJob?.cancel()
++                navigationJob?.cancel()
++                suggestions = emptyList()
++                val query = message.data.getString("query")?.trim().orEmpty()
++                if (query.length < 2) { commandReply(reply, type, id, "OK"); return }
++                if (query.length > 200) { commandReply(reply, type, id, "ERROR"); return }
++                if (location?.currentLocation == null) { commandReply(reply, type, id, "NO_LOCATION"); return }
++                searchJob = commands.launch {
++                    try {
++                        val search = placeSearch ?: GMapsPlaceSearch.getInstance(this@LibreCRMapService, location!!, reportErrors = true)
++                            .also { placeSearch = it }
++                        val results = withTimeout(10_000L) { search.searchLocationsAsync(query).await() }.take(5)
++                        ensureActive()
++                        suggestions = results
++                        commandReply(reply, type, id, "OK", results)
++                    } catch (error: CancellationException) {
++                        if (error is TimeoutCancellationException) commandReply(reply, type, id, "ERROR") else throw error
++                    } catch (_: Exception) { commandReply(reply, type, id, "ERROR") }
++                }
++            }
++            NAVIGATE -> {
++                navigationJob?.cancel()
++                val selected = suggestions.firstOrNull { it.id == message.data.getString("placeId") }
++                if (selected == null) { commandReply(reply, type, id, "ERROR"); return }
++                navigationJob = commands.launch {
++                    try {
++                        val result = withTimeout(10_000L) {
++                            if (selected.location != null) selected else placeSearch?.resultInformationAsync(selected.id)?.await()
++                        }
++                        ensureActive()
++                        val destination = result?.location
++                        if (destination == null) { commandReply(reply, type, id, "ERROR"); return@launch }
++                        destinationName = result.name
++                        namedDestination = LatLng(destination.latitude, destination.longitude)
++                        interaction.navigateTo(destination)
++                        commandReply(reply, type, id, "OK")
++                    } catch (error: CancellationException) {
++                        if (error is TimeoutCancellationException) commandReply(reply, type, id, "ERROR") else throw error
++                    } catch (_: Exception) { commandReply(reply, type, id, "ERROR") }
++                }
++            }
++            STOP_NAVIGATION -> {
++                navigationJob?.cancel()
++                interaction.stopNavigation()
++                commandReply(reply, type, id, "OK")
++            }
++            RECALCULATE -> {
++                navigationJob?.cancel()
++                interaction.recalcNavigation()
++                commandReply(reply, type, id, "OK")
++            }
++        }
++    }
++
++    private fun createMap(width: Int, height: Int) {
++        releaseMap()
++        val token = generation
++        size = width to height
++        mapLoaded = false
++        val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
++        reader = imageReader
++        imageReader.setOnImageAvailableListener({ source -> capture(source, token) }, captureHandler)
++        display = (getSystemService(DISPLAY_SERVICE) as DisplayManager).createVirtualDisplay(
++            "LibreCR-GoogleMaps", width, height, 250, imageReader.surface,
++            DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY)
++        val data = CDSDataProvider().also { it.setConnection(CarInformation.cdsData.asConnection(it)) }
++        cdsData = data
++        val location = CdsLocationProvider(data, CarCapabilitiesSummarized(CarInformation()).isId4)
++        this.location = location
++        val source = GMapsLocationSource()
++        val settings = MutableAppSettingsReceiver(applicationContext, main)
++        this.settings = settings
++        // The addon already reserves the BMW sidebar and requests the map card's exact size.
++        val projection = GMapsProjection(applicationContext, display!!.display, settings, source, insetForSidebar = false)
++        this.projection = projection
++        location.callback = { current ->
++            main.post {
++                if (generation == token) {
++                    source.onLocationUpdate(current)
++                    projection.map?.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.Builder()
++                        .target(LatLng(current.latitude, current.longitude)).zoom(15f)
++                        .bearing(if (current.hasBearing()) current.bearing else 0f).tilt(35f).build()))
++                }
++            }
++        }
++        projection.mapListener = Runnable {
++            projection.map?.setOnMapLoadedCallback { if (generation == token) mapLoaded = true }
++            location.start()
++            drawRoute(LibreCRMapRoute.current.value)
++        }
++        LibreCRMapRoute.current.observeForever(routeObserver)
++        projection.show()
++    }
++
++    private fun drawRoute(route: LibreCRMapRoute.Snapshot?) {
++        val map = projection?.map ?: return
++        map.clear()
++        route?.destination?.let { map.addMarker(MarkerOptions().position(it)) }
++        if (!route?.points.isNullOrEmpty()) {
++            map.addPolyline(PolylineOptions().color(getColor(R.color.mapRouteLine)).addAll(route!!.points))
++        }
++    }
++
++    private fun capture(source: ImageReader, token: Int) {
++        val image = try { source.acquireLatestImage() } catch (_: IllegalStateException) { null } ?: return
++        try {
++            val now = SystemClock.elapsedRealtime()
++            if (token != generation || now - lastCaptureMs < 900L) return
++            lastCaptureMs = now
++            val plane = image.planes[0]
++            val paddedWidth = plane.rowStride / plane.pixelStride
++            val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
++            try {
++                padded.copyPixelsFromBuffer(plane.buffer)
++                val frame = Bitmap.createBitmap(image.width, image.height, Bitmap.Config.ARGB_8888)
++                try {
++                    Canvas(frame).drawBitmap(padded, Rect(0, 0, image.width, image.height), Rect(0, 0, frame.width, frame.height), null)
++                    val bytes = ByteArrayOutputStream().use {
++                        if (!frame.compress(Bitmap.CompressFormat.JPEG, 72, it)) return
++                        it.toByteArray()
++                    }
++                    if (bytes.size <= MAX_FRAME_BYTES) main.post {
++                        if (generation == token && jpeg?.contentEquals(bytes) != true) {
++                            jpeg = bytes
++                            sequence++
++                        }
++                    }
++                } finally { frame.recycle() }
++            } finally { padded.recycle() }
++        } catch (_: RuntimeException) {
++            main.post { if (generation == token) { jpeg = null } }
++        } finally { runCatching { image.close() } }
++    }
++
++    private fun releaseMap() {
++        generation++
++        searchJob?.cancel()
++        navigationJob?.cancel()
++        suggestions = emptyList()
++        placeSearch = null
++        main.removeCallbacks(idle)
++        LibreCRMapRoute.current.removeObserver(routeObserver)
++        location?.callback = null
++        location?.stop()
++        location = null
++        projection?.mapListener = null
++        runCatching { projection?.dismiss() }
++        projection = null
++        settings?.callback = null
++        settings = null
++        cdsData?.setConnection(null)
++        cdsData = null
++        reader?.setOnImageAvailableListener(null, null)
++        display?.release()
++        display = null
++        reader?.let { old -> captureHandler.post { runCatching { old.close() } } }
++        reader = null
++        size = null
++        jpeg = null
++        mapLoaded = false
++        lastCaptureMs = 0L
++    }
++
++    override fun onUnbind(intent: Intent?): Boolean { releaseMap(); return false }
++    override fun onDestroy() {
++        releaseMap()
++        commands.cancel()
++        captureThread.quitSafely()
++        super.onDestroy()
++    }
++}
+--- a/app/src/gmap/java/me/hufman/androidautoidrive/maps/GMapsPlaceSearch.kt
++++ b/app/src/gmap/java/me/hufman/androidautoidrive/maps/GMapsPlaceSearch.kt
+@@ -15,15 +15,15 @@
+ import kotlinx.coroutines.Deferred
+ import me.hufman.androidautoidrive.carapp.maps.TAG
+ 
+-class GMapsPlaceSearch(private val placesClient: PlacesClient, private val locationProvider: CarLocationProvider, private val timeProvider: () -> Long = {System.currentTimeMillis()}): MapPlaceSearch {
++class GMapsPlaceSearch(private val placesClient: PlacesClient, private val locationProvider: CarLocationProvider, private val timeProvider: () -> Long = {System.currentTimeMillis()}, private val reportErrors: Boolean = false): MapPlaceSearch {
+ 	companion object {
+ 		private const val SEARCH_SESSION_TTL = 180000L    // number of milliseconds that a search session can live   https://stackoverflow.com/a/52339858
+-		fun getInstance(context: Context, locationProvider: CarLocationProvider): GMapsPlaceSearch {
++		fun getInstance(context: Context, locationProvider: CarLocationProvider, reportErrors: Boolean = false): GMapsPlaceSearch {
+ 			val api_key = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+ 					.metaData.getString("com.google.android.geo.API_KEY") ?: ""
+ 			Places.initialize(context, api_key)
+ 			val placesClient = Places.createClient(context)
+-			return GMapsPlaceSearch(placesClient, locationProvider)
++			return GMapsPlaceSearch(placesClient, locationProvider, reportErrors = reportErrors)
+ 		}
+ 	}
+ 
+@@ -70,7 +70,7 @@
+ 			results.complete(mapResults)
+ 		}.addOnFailureListener {
+ 			Log.w(TAG, "Unsuccessful result when loading results for $query: $it")
+-			results.complete(emptyList())
++			if (reportErrors) results.completeExceptionally(it) else results.complete(emptyList())
+ 		}
+ 		return results
+ 	}
+@@ -99,8 +99,8 @@
+ 			result.complete(mapResult)
+ 		}.addOnFailureListener {
+ 			Log.w(TAG, "Did not find Place info for Place ID $resultId: $it")
+-			result.complete(null)
++			if (reportErrors) result.completeExceptionally(it) else result.complete(null)
+ 		}
+ 		return result
+ 	}
+-}
+\ No newline at end of file
++}
+--- a/app/src/testGmap/java/me/hufman/androidautoidrive/GMapsPlaceSearchTest.kt
++++ b/app/src/testGmap/java/me/hufman/androidautoidrive/GMapsPlaceSearchTest.kt
+@@ -49,6 +49,19 @@
+ 	}
+ 
+ 	val placeSearch = GMapsPlaceSearch(mockPlacesClient, mockLocationProvider, timeProvider)
++
++	@Test
++	fun bridgeCanDistinguishSearchFailureFromNoSuggestions(): Unit = runBlocking {
++		val bridgeSearch = GMapsPlaceSearch(mockPlacesClient, mockLocationProvider, timeProvider, reportErrors = true)
++		val result = bridgeSearch.searchLocationsAsync("query", LatLng(1.0, 2.0))
++		searchFailureListener.firstValue.onFailure(IllegalStateException("Places unavailable"))
++		try {
++			result.await()
++			fail("An API failure must not be reported as an empty successful search")
++		} catch (error: IllegalStateException) {
++			assertEquals("Places unavailable", error.message)
++		}
++	}
+ 
+ 	@Test
+ 	fun testSearchUnknownLocation(): Unit = runBlocking {
+@@ -146,4 +159,4 @@
+ 		assertNull(placeResult)
+ 	}
+ 
+-}
+\ No newline at end of file
++}
+--- /dev/null
++++ b/app/src/testGmap/java/me/hufman/androidautoidrive/carapp/maps/GMapsNavControllerTest.kt
+@@ -0,0 +1,83 @@
++package me.hufman.androidautoidrive.carapp.maps
++
++import android.location.Location
++import com.google.maps.DirectionsApiRequest
++import com.google.maps.GeoApiContext
++import com.google.maps.PendingResult
++import com.google.maps.model.*
++import me.hufman.androidautoidrive.maps.CarLocationProvider
++import me.hufman.androidautoidrive.maps.LatLong
++import org.junit.Assert.*
++import org.junit.Test
++import org.mockito.Answers
++import org.mockito.kotlin.*
++
++class GMapsNavControllerTest {
++    private val location = mock<Location> {
++        on { latitude } doReturn 50.0
++        on { longitude } doReturn 4.0
++    }
++    private val provider = mock<CarLocationProvider> { on { currentLocation } doReturn location }
++    private val requests = mutableListOf<DirectionsApiRequest>()
++    private val callbacks = mutableListOf<PendingResult.Callback<DirectionsResult>>()
++    private val statuses = mutableListOf<String>()
++    private val controller = GMapsNavController(mock<GeoApiContext>(), provider, { statuses.add(it.status) }) {
++        mock<DirectionsApiRequest>(defaultAnswer = Answers.RETURNS_SELF).also { request ->
++            doAnswer {
++                callbacks.add(it.getArgument(0))
++                null
++            }.whenever(request).setCallback(any())
++            requests.add(request)
++        }
++    }
++
++    private fun result() = DirectionsResult().apply {
++        routes = arrayOf(DirectionsRoute().apply {
++            overviewPolyline = EncodedPolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@")
++            legs = arrayOf(DirectionsLeg().apply {
++                distance = Distance().apply { inMeters = 2500L }
++                duration = Duration().apply { inSeconds = 600L }
++            })
++        })
++    }
++
++    @Test fun stoppedRouteCannotBeRestoredByALateDirectionsResponse() {
++        controller.navigateTo(LatLong(51.0, 5.0))
++        assertEquals("CALCULATING", controller.status)
++        controller.stopNavigation()
++        callbacks.first().onResult(result())
++        verify(requests.first()).cancel()
++        assertEquals("IDLE", controller.status)
++        assertNull(controller.currentNavDestination)
++        assertNull(controller.currentNavRoute)
++        assertEquals(listOf("CALCULATING", "IDLE"), statuses)
++    }
++
++    @Test fun newDestinationRejectsOlderSuccessAndFailureAndReportsRouteTotals() {
++        controller.navigateTo(LatLong(51.0, 5.0))
++        controller.navigateTo(LatLong(52.0, 6.0))
++        callbacks.first().onResult(result())
++        callbacks.first().onFailure(IllegalStateException())
++        assertEquals("CALCULATING", controller.status)
++        assertNull(controller.currentNavRoute)
++        callbacks.last().onResult(result())
++        assertEquals("ACTIVE", controller.status)
++        assertEquals(2500L, controller.distanceMeters)
++        assertEquals(600L, controller.durationSeconds)
++        assertEquals(3, controller.currentNavRoute!!.size)
++        controller.stopNavigation()
++        assertEquals(0L, controller.distanceMeters)
++    }
++
++    @Test fun missingGpsAndNoRouteProduceExplicitStatuses() {
++        whenever(provider.currentLocation).thenReturn(null)
++        controller.navigateTo(LatLong(51.0, 5.0))
++        assertEquals("NO_LOCATION", controller.status)
++        assertTrue(requests.isEmpty())
++        whenever(provider.currentLocation).thenReturn(location)
++        controller.navigateTo(LatLong(51.0, 5.0))
++        callbacks.last().onResult(DirectionsResult().apply { routes = emptyArray() })
++        assertEquals("ERROR", controller.status)
++        assertNull(controller.currentNavRoute)
++    }
++}
+--- /dev/null
++++ b/app/src/testGmap/java/me/hufman/androidautoidrive/carapp/maps/LibreCRMapRouteTest.kt
+@@ -0,0 +1,29 @@
++package me.hufman.androidautoidrive.carapp.maps
++
++import androidx.arch.core.executor.testing.InstantTaskExecutorRule
++import androidx.lifecycle.Observer
++import com.google.android.gms.maps.model.LatLng
++import me.hufman.androidautoidrive.maps.LatLong
++import org.junit.Assert.*
++import org.junit.Rule
++import org.junit.Test
++
++class LibreCRMapRouteTest {
++    @get:Rule val executor = InstantTaskExecutorRule()
++
++    @Test fun routeIsCopiedAndStoppingNavigationClearsTheSharedOverlay() {
++        val received = mutableListOf<LibreCRMapRoute.Snapshot>()
++        val observer = Observer<LibreCRMapRoute.Snapshot> { received.add(it) }
++        LibreCRMapRoute.current.observeForever(observer)
++        try {
++            val points = mutableListOf(LatLng(50.0, 5.0), LatLng(50.1, 5.1))
++            LibreCRMapRoute.publish(LatLong(50.1, 5.1), points)
++            points.clear()
++            assertEquals(2, received.last().points.size)
++            assertEquals(LatLng(50.1, 5.1), received.last().destination)
++            LibreCRMapRoute.publish(null, null)
++            assertTrue(received.last().points.isEmpty())
++            assertNull(received.last().destination)
++        } finally { LibreCRMapRoute.current.removeObserver(observer) }
++    }
++}
+--- /dev/null
++++ b/app/src/testGmap/java/me/hufman/androidautoidrive/carapp/maps/LibreCRMapServiceTest.kt
+@@ -0,0 +1,21 @@
++package me.hufman.androidautoidrive.carapp.maps
++
++import android.content.pm.PackageManager
++import org.junit.Assert.*
++import org.junit.Test
++import org.mockito.Answers
++import org.mockito.kotlin.*
++
++class LibreCRMapServiceTest {
++    @Test fun onlyLibreCRUidCanRequestLocationBearingFrames() {
++        val pm = mock<PackageManager>()
++        val service = mock<LibreCRMapService>(defaultAnswer = Answers.CALLS_REAL_METHODS)
++        doReturn(pm).whenever(service).packageManager
++        whenever(pm.getPackagesForUid(1001)).thenReturn(arrayOf("re.abbot.librecr.app"))
++        whenever(pm.getPackagesForUid(1002)).thenReturn(arrayOf("some.other.app"))
++        whenever(pm.getPackagesForUid(1003)).thenReturn(null)
++        assertTrue(service.isTrustedUid(1001))
++        assertFalse(service.isTrustedUid(1002))
++        assertFalse(service.isTrustedUid(1003))
++    }
++}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material You surface roles; the host resolves them with the current wallpaper palette. -->
+<resources>
+    <color name="glucose_widget_surface">@android:color/system_accent2_50</color>
+    <color name="glucose_widget_tile">@android:color/system_neutral1_10</color>
+    <color name="glucose_widget_on_surface">@android:color/system_neutral1_900</color>
+    <color name="glucose_widget_on_surface_variant">@android:color/system_neutral2_700</color>
+    <color name="glucose_widget_primary">@android:color/system_accent1_600</color>
+    <color name="glucose_widget_chip">@android:color/system_accent2_100</color>
+    <color name="glucose_widget_on_chip">@android:color/system_accent2_900</color>
+    <color name="glucose_widget_tertiary_container">@android:color/system_accent3_100</color>
+    <color name="glucose_widget_on_tertiary_container">@android:color/system_accent3_900</color>
+    <color name="glucose_widget_tertiary">@android:color/system_accent3_600</color>
+</resources>

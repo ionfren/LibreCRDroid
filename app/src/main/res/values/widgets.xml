@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_compact_name">LibreCR · Glicemie compactă</string>
+    <string name="widget_wide_name">LibreCR · Glicemie cu grafic</string>
+    <string name="widget_description">Glicemia, trendul, viteza pe minut și vechimea citirii. Când îl mărești, afișează graficul ultimelor 3 ore. Se actualizează automat.</string>
+    <string name="widget_current">Citire actuală</string>
+    <string name="widget_stale">Date vechi</string>
+    <string name="widget_no_reading">Fără citire</string>
+    <string name="widget_range_very_low">Foarte scăzut</string>
+    <string name="widget_range_low">Scăzut</string>
+    <string name="widget_range_in">În țintă</string>
+    <string name="widget_range_high">Ridicat</string>
+    <string name="widget_range_very_high">Foarte ridicat</string>
+    <string name="widget_chart_window">Ultimele 3 ore</string>
+    <string name="widget_chart_window_short" translatable="false">3 h</string>
+    <string name="widget_chart_empty">Încă nu există date</string>
+    <string name="widget_warmup_remaining">încă %1$d min</string>
+    <string name="widget_delta_per_minute" translatable="false">%1$s/min</string>
+    <string name="widget_preview_age">acum 1 min</string>
+    <!-- Chronometer uses %s for its host-rendered elapsed time, not a numbered resource argument. -->
+    <string name="widget_age_format" formatted="false">acum %s</string>
+    <string name="widget_brand" translatable="false">LibreCR</string>
+    <string name="widget_preview_value" translatable="false">112</string>
+    <string name="widget_preview_details" translatable="false">mg/dL · +1.1/min</string>
+</resources>

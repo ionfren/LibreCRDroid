@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Widget color tokens. Surface roles fall back to the teal brand scheme here; values-v31
+    swaps them for the wallpaper (Material You) palette. Range colors are semantic and fixed,
+    tuned for at least 4.5:1 text contrast on the widget surfaces in both themes.
+-->
+<resources>
+    <color name="glucose_widget_surface">#E3F1F0</color>
+    <color name="glucose_widget_tile">#F7FCFB</color>
+    <color name="glucose_widget_on_surface">#161D1D</color>
+    <color name="glucose_widget_on_surface_variant">#3F4948</color>
+    <color name="glucose_widget_primary">#006A6A</color>
+    <color name="glucose_widget_chip">#CCE8E7</color>
+    <color name="glucose_widget_on_chip">#051F1F</color>
+    <color name="glucose_widget_tertiary_container">#D3E4FF</color>
+    <color name="glucose_widget_on_tertiary_container">#041C35</color>
+    <color name="glucose_widget_tertiary">#4B607C</color>
+    <color name="glucose_widget_error_container">#FFDAD6</color>
+    <color name="glucose_widget_on_error_container">#410002</color>
+
+    <color name="glucose_widget_very_low">#BA1A1A</color>
+    <color name="glucose_widget_very_low_container">#FFDAD6</color>
+    <color name="glucose_widget_on_very_low_container">#410002</color>
+    <color name="glucose_widget_low">#B83F12</color>
+    <color name="glucose_widget_low_container">#FFDBCE</color>
+    <color name="glucose_widget_on_low_container">#390C00</color>
+    <color name="glucose_widget_in_range">#1B7A3D</color>
+    <color name="glucose_widget_in_range_container">#C3EFCD</color>
+    <color name="glucose_widget_on_in_range_container">#00391A</color>
+    <color name="glucose_widget_high">#835C00</color>
+    <color name="glucose_widget_high_container">#FFDF9E</color>
+    <color name="glucose_widget_on_high_container">#291800</color>
+    <color name="glucose_widget_very_high">#A04A00</color>
+    <color name="glucose_widget_very_high_container">#FFDBC7</color>
+    <color name="glucose_widget_on_very_high_container">#331200</color>
+</resources>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="set_android_auto_s">Notifications de glycémie en voiture</string>
+    <string name="auto_notification_enable">Notifications persistantes</string>
+    <string name="auto_notification_description">Affiche la glycémie en mg/dL, la tendance, le delta par minute et l\'ancienneté de la mesure lorsque le téléphone est connecté à Android Auto. Les mises à jour sont silencieuses après la première apparition.</string>
+    <string name="auto_notification_disabled">Désactivé</string>
+    <string name="auto_notification_connected">Android Auto connecté</string>
+    <string name="auto_notification_waiting">S\'affichera à la connexion à Android Auto</string>
+    <string name="auto_notification_permission">Autorisez les notifications LibreCRDroid pour afficher la carte.</string>
+    <string name="auto_notification_system_settings">Paramètres des notifications</string>
+    <string name="auto_notification_setup">Activer dans Android Auto</string>
+    <string name="auto_notification_sideload">Pour un APK installé manuellement : dans les paramètres Android Auto du téléphone, appuyez 10 fois sur Version pour activer le mode développeur. Ouvrez les paramètres développeur depuis le menu ⋮ et activez Sources inconnues (Unknown sources). L\'autorisation Android d\'installer des APK est un réglage distinct.</string>
+    <string name="auto_notification_posted">La notification a été publiée sur le téléphone. Son affichage en voiture dépend des paramètres Android Auto ci-dessous.</string>
+    <string name="auto_notification_hidden">La carte a été masquée ou marquée comme lue. Vous pouvez la renvoyer.</string>
+    <string name="auto_notification_failed">Impossible de publier la notification. Réessayez.</string>
+    <string name="auto_notification_sending">Préparation de la notification…</string>
+    <string name="auto_notification_resend">Renvoyer la notification</string>
+    <string name="auto_notification_preview">Exemple de contenu</string>
+    <string name="auto_notification_limits">Fonction expérimentale. Android Auto contrôle l\'apparence et la durée d\'affichage de la carte. Une courte bannière peut apparaître à l\'activation. Si vous fermez la carte, elle reste masquée jusqu\'à la reconnexion ou jusqu\'à la désactivation puis réactivation de cette option.</string>
+    <string name="auto_notification_car_settings">Dans les paramètres Android Auto, activez les notifications de messages et l\'affichage de la première ligne des messages.</string>
+    <string name="auto_notification_channel">Glycémie Android Auto</string>
+    <string name="auto_notification_channel_description">Carte de glycémie actualisée uniquement pendant une connexion Android Auto.</string>
+    <string name="auto_notification_private">Mise à jour privée masquée sur l\'écran verrouillé</string>
+    <string name="auto_notification_refresh">Actualiser</string>
+    <string name="auto_notification_dismiss">Masquer</string>
+    <string name="auto_notification_disable">Désactiver</string>
+</resources>

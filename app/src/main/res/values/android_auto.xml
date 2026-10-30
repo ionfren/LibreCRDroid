@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="title_android_auto" translatable="false">Android Auto</string>
+    <string name="set_android_auto_s">Notificări de glicemie în mașină</string>
+    <string name="auto_notification_enable">Notificări persistente</string>
+    <string name="auto_notification_description">Afișează glicemia în mg/dL, trendul, delta pe minut și vechimea citirii cât timp telefonul este conectat la Android Auto. Actualizările sunt silențioase după prima apariție.</string>
+    <string name="auto_notification_disabled">Dezactivat</string>
+    <string name="auto_notification_connected">Android Auto conectat</string>
+    <string name="auto_notification_waiting">Se va afișa la conectarea la Android Auto</string>
+    <string name="auto_notification_permission">Permite notificările LibreCRDroid pentru a afișa cardul.</string>
+    <string name="auto_notification_system_settings">Setările notificărilor</string>
+    <string name="auto_notification_setup">Activare în Android Auto</string>
+    <string name="auto_notification_sideload">Pentru APK-ul instalat manual: în setările Android Auto de pe telefon, apasă de 10 ori pe Versiune pentru a activa modul dezvoltator. Din meniul ⋮ deschide Setări pentru dezvoltatori și activează Surse necunoscute (Unknown sources). Permisiunea de instalare APK din Android este o setare separată.</string>
+    <string name="auto_notification_posted">Notificarea este trimisă pe telefon. Afișarea în mașină depinde de setările Android Auto de mai jos.</string>
+    <string name="auto_notification_hidden">Cardul a fost ascuns sau marcat ca citit. Îl poți retrimite.</string>
+    <string name="auto_notification_failed">Notificarea nu a putut fi trimisă. Încearcă din nou.</string>
+    <string name="auto_notification_sending">Se pregătește notificarea…</string>
+    <string name="auto_notification_resend">Retrimite notificarea</string>
+    <string name="auto_notification_preview">Exemplu de conținut</string>
+    <string name="auto_notification_limits">Funcție experimentală. Android Auto controlează aspectul și durata afișării cardului. Poate apărea un banner scurt la activare. Dacă închizi cardul, acesta rămâne ascuns până la reconectare sau până oprești și repornești opțiunea.</string>
+    <string name="auto_notification_car_settings">În setările Android Auto, activează notificările de mesaje și afișarea primei linii a mesajelor.</string>
+    <string name="auto_notification_channel">Glicemie Android Auto</string>
+    <string name="auto_notification_channel_description">Card de glicemie actualizat numai în timpul conexiunii Android Auto.</string>
+    <string name="auto_notification_private">Actualizare privată ascunsă pe ecranul blocat</string>
+    <string name="auto_notification_refresh">Actualizează</string>
+    <string name="auto_notification_dismiss">Ascunde</string>
+    <string name="auto_notification_disable">Oprește</string>
+</resources>

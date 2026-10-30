@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_compact_name">LibreCR · Compact glucose</string>
+    <string name="widget_wide_name">LibreCR · Glucose with chart</string>
+    <string name="widget_description">Glucose, trend, rate per minute and reading age. Enlarge it to see the last 3 hours. Updates automatically.</string>
+    <string name="widget_current">Current reading</string>
+    <string name="widget_stale">Stale data</string>
+    <string name="widget_no_reading">No reading</string>
+    <string name="widget_range_very_low">Very low</string>
+    <string name="widget_range_low">Low</string>
+    <string name="widget_range_in">In range</string>
+    <string name="widget_range_high">High</string>
+    <string name="widget_range_very_high">Very high</string>
+    <string name="widget_chart_window">Last 3 hours</string>
+    <string name="widget_chart_empty">No data yet</string>
+    <string name="widget_warmup_remaining">%1$d min left</string>
+    <string name="widget_preview_age">1 min ago</string>
+    <string name="widget_age_format" formatted="false">%s ago</string>
+</resources>

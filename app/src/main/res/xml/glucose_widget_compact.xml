@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resizable down to 2×1 / 2×2 cells: short car-grid rows get the one-row bar layout. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:targetApi="s"
+    android:minWidth="180dp"
+    android:minHeight="144dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/glucose_widget_loading"
+    android:previewLayout="@layout/glucose_widget_preview"
+    android:description="@string/widget_description"
+    android:widgetCategory="home_screen" />

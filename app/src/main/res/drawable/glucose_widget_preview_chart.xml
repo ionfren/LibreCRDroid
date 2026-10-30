@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static picker-preview sparkline (Android 12-14), the same sample day as previewGlucoseWidgetUi. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp"
+    android:height="96dp"
+    android:viewportWidth="240"
+    android:viewportHeight="96">
+    <path
+        android:fillAlpha="0.16"
+        android:fillColor="@color/glucose_widget_in_range"
+        android:pathData="M6,26.1 H234 A6,6 0 0 1 240,32.1 V66.5 A6,6 0 0 1 234,72.5 H6 A6,6 0 0 1 0,66.5 V32.1 A6,6 0 0 1 6,26.1 Z" />
+    <path
+        android:pathData="M2.4,40.4 L8.8,38.3 L15.2,35.3 L21.6,32.0 L28.0,28.6 L33.4,26.1"
+        android:strokeColor="@color/glucose_widget_in_range"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.4" />
+    <path
+        android:pathData="M33.4,26.1 L34.4,25.6 L40.7,23.5 L47.1,22.7 L53.5,24.0 L58.1,26.1"
+        android:strokeColor="@color/glucose_widget_high"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.4" />
+    <path
+        android:pathData="M58.1,26.1 L59.9,26.9 L66.3,31.1 L72.7,35.8 L79.1,40.4 L85.5,44.6 L91.9,48.0 L98.3,51.0 L104.7,53.5 L111.1,55.6 L117.5,57.3 L123.8,59.0 L130.2,60.2 L136.6,61.5 L143.0,62.3 L149.4,63.2 L155.8,63.6 L162.2,64.0 L168.6,64.0 L175.0,64.0 L181.4,63.6 L187.8,63.6 L194.2,63.2 L200.5,62.8 L206.9,61.9 L213.3,60.7 L219.7,59.0 L226.1,56.9 L232.5,54.8"
+        android:strokeColor="@color/glucose_widget_in_range"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.4" />
+    <path
+        android:fillAlpha="0.25"
+        android:fillColor="@color/glucose_widget_in_range"
+        android:pathData="M225.0,54.8 a7.5,7.5 0 1 0 15,0 a7.5,7.5 0 1 0 -15,0" />
+    <path
+        android:fillAlpha="1"
+        android:fillColor="@color/glucose_widget_in_range"
+        android:pathData="M228.9,54.8 a3.6,3.6 0 1 0 7.2,0 a3.6,3.6 0 1 0 -7.2,0" />
+</vector>
