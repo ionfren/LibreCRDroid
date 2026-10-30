@@ -24,6 +24,9 @@ class WearAppearanceStore(private val context: Context) {
     /** Active complication requests use memory; DataStore is only the process-cold fallback. */
     suspend fun current(): WearAppearanceSettings = cachedSettings ?: settingsFlow.first()
 
+    /** Notification callbacks must never wait for a cold DataStore read. */
+    internal fun cachedOrDefault(): WearAppearanceSettings = cachedSettings ?: WearAppearanceSettings()
+
     suspend fun save(settings: WearAppearanceSettings) {
         context.wearAppearanceDataStore.edit {
             it[keySettingsJson] = settings.toJson()

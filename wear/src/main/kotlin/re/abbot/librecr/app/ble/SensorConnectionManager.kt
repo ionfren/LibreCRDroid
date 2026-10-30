@@ -30,10 +30,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import re.abbot.librecr.app.data.ImportedSession
 import re.abbot.librecr.app.data.SensorStateStore
+import re.abbot.librecr.app.isWearGlucoseFresh
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.log.GlucoseLatencyTracer
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
+import re.abbot.librecr.app.wear.ReceiverSessionBackup
+import re.abbot.librecr.protocol.connection.FailedReconnectTracker
+import re.abbot.librecr.protocol.connection.RecoveryPolicy
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
 import re.abbot.librecr.app.wear.complication.StaleRepaintScheduler
 import re.abbot.librecr.protocol.dataplane.DataFrame
@@ -113,14 +118,12 @@ fun GlucoseUi.toLastGlucose(): SensorStateStore.LastGlucose? {
     return SensorStateStore.LastGlucose(lifeCount, mg, trend, receivedAtMs, deltaMgDlPerMin)
 }
 
-private const val GLUCOSE_UNAVAILABLE_FRESH_MS = 6 * 60_000L
-
 /**
  * True while the latest realtime glucose packet has no displayable value. This is not, by itself,
  * a sensor-error signal; patch-status attention remains the source of truth for real sensor errors.
  */
 fun GlucoseUi?.isActiveGlucoseUnavailable(nowMs: Long = System.currentTimeMillis()): Boolean =
-    this != null && !usable && receivedAtMs > 0L && nowMs - receivedAtMs < GLUCOSE_UNAVAILABLE_FRESH_MS
+    this != null && (!usable || mgDL == null) && isWearGlucoseFresh(receivedAtMs, nowMs)
 
 /**
  * Owns the full connection lifecycle: scan → connect → security handshake
@@ -146,6 +149,9 @@ class SensorConnectionManager(
 
     private val lastGlucoseAt = AtomicLong(0)
     private var loopJob: Job? = null
+    private val localReadingSequence = AtomicLong(0L)
+    private val failedReconnects = FailedReconnectTracker()
+    val failedReconnectCount: Int get() = synchronized(failedReconnects) { failedReconnects.failures }
     @Volatile private var activeConnection: SensorConnection? = null
     @Volatile private var cachedPhase5RawKey: ByteArray? = null
     /** Consecutive non-mismatch cached-reconnect failures; a correct key survives transient blips. */
@@ -198,6 +204,7 @@ class SensorConnectionManager(
         scope: CoroutineScope,
         session: ImportedSession,
         allowCandidateFirstPair: Boolean = false,
+        passiveConnect: Boolean = false,
     ) {
         // Never run two loops. The watch is started from several uncoordinated triggers (boot
         // receiver, BT-state-change receiver, activity, phone session relay). This whole method is
@@ -209,12 +216,14 @@ class SensorConnectionManager(
             return
         }
         loopJob?.cancel()
+        AutomaticSensorHandoff.onLocalSessionStarted(session.bleAddress)
         cachedReconnectFailures = 0
+        synchronized(failedReconnects) { failedReconnects.reset() }
         lastSensorStatus = null
         lastSentReading = null
         lifeCountTracker = ContiguousLifeCountTracker()
         continuitySession = null
-        reconnectAttempt = 0
+        reconnectAttempt = if (passiveConnect) 1 else 0
         forceDirectConnectNext = false
         sensorOnline = false
         reconnectSignal = null
@@ -656,7 +665,8 @@ class SensorConnectionManager(
             readingIssue = event.reason,
             readingIssueDetail = event.detail,
         )
-        LibreComplicationUpdater.requestAll(context, event.lifeCount)
+        StaleRepaintScheduler.armFrom(context, event.receivedAtMs)
+        LibreComplicationUpdater.requestGlucose(context, event.lifeCount)
         BleLog.log(
             "WATCH_STATE_UPDATED lc=${event.lifeCount} source=remote usable=false " +
                 "issue=${event.reason} ${event.detail}",
@@ -679,8 +689,10 @@ class SensorConnectionManager(
         var status8RecoveryState: Status8RecoveryState? = null
         loadCachedPhase5RawKeyIfNeeded()
         seedContinuityState(currentSession)
+        var reconnectingKnownSensor = cachedPhase5RawKey != null
 
         while (kotlin.coroutines.coroutineContext.isActive) {
+            val readingSequenceBeforeAttempt = localReadingSequence.get()
             var conn: SensorConnection? = null
             var attemptFailure: String? = null
             var attemptFailureStatus: Int? = null
@@ -886,9 +898,11 @@ class SensorConnectionManager(
                         )
                     }
                     c.connectAndDiscover(
-                        connectTimeoutMs = sensorConnectTimeoutMs(
-                            autoConnect = connectionAutoConnect,
-                            directTimeoutMs = DIRECT_GATT_CONNECT_TIMEOUT_MS,
+                        // The opt-in fallback needs completed attempts: bound the otherwise
+                        // unbounded controller wait while recovering an already-known sensor.
+                        connectTimeoutMs = RecoveryPolicy.controllerConnectTimeout(
+                            AutomaticSensorHandoff.enabled, reconnectingKnownSensor, failedReconnectCount,
+                            connectionAutoConnect, DIRECT_GATT_CONNECT_TIMEOUT_MS,
                         ),
                         discoverTimeoutMs = STANDARD_DISCOVER_TIMEOUT_MS,
                         autoConnect = connectionAutoConnect,
@@ -948,6 +962,7 @@ class SensorConnectionManager(
                     },
                 )
 
+                reconnectingKnownSensor = true
                 _state.value = ConnectionState.STREAMING
                 _statusLine.value = "streaming"
                 lastGlucoseAt.set(System.currentTimeMillis())
@@ -1043,6 +1058,12 @@ class SensorConnectionManager(
                 if (attemptFailure != null && !keepGattForFastReconnect) {
                     releaseRecoveryWakeLock("attempt_failed")
                 }
+            }
+
+            if (reconnectingKnownSensor && (attemptFailure != null ||
+                    localReadingSequence.get() == readingSequenceBeforeAttempt)) {
+                synchronized(failedReconnects) { failedReconnects.failed() }
+                AutomaticSensorHandoff.retryIfNeeded()
             }
 
             if (continueImmediately) {
@@ -1224,7 +1245,10 @@ class SensorConnectionManager(
     private suspend fun rememberPhase5RawKey(key: ByteArray) {
         cachedPhase5RawKey = key.copyOf()
         runCatching { store.saveCachedPhase5RawKey(key) }
-            .onSuccess { BleLog.log("manager: cached Phase 5 resume key saved locally") }
+            .onSuccess {
+                BleLog.log("manager: cached Phase 5 resume key saved locally")
+                store.loadSession()?.let { ReceiverSessionBackup.publish(it, key) }
+            }
             .onFailure { BleLog.log("manager: cached Phase 5 resume key save failed: ${it.message}") }
     }
 
@@ -1355,8 +1379,13 @@ class SensorConnectionManager(
                     // No connection-priority manipulation: the link keeps the default Android/sensor-
                     // negotiated parameters for the whole session (HIGH/BALANCED → status=8, LOW_POWER →
                     // slow handshake, any mid-session change → status=19).
+                    AutomaticSensorHandoff.onLocalReading(r.lifeCount)
                     val mg = r.currentGlucoseMgDL
                     val usable = r.isCurrentGlucoseUsable
+                    if (usable && mg != null) {
+                        localReadingSequence.incrementAndGet()
+                        synchronized(failedReconnects) { failedReconnects.reset() }
+                    }
                     val firstRecoveredGlucose = awaitingFirstReadingAfterReconnect && usable && mg != null
                     val issue = glucoseReadingIssue(r)
                     val issueDetail = glucoseReadingIssueDetail(r)
@@ -1395,7 +1424,7 @@ class SensorConnectionManager(
                         // 2) Send to the phone straight from the decoded object (no DataStore reload),
                         //    and 3) refresh complications from the in-memory value.
                         WearDataSync.sendGlucose(context, reading, timeline)
-                        LibreComplicationUpdater.requestAll(context, r.lifeCount)
+                        LibreComplicationUpdater.requestGlucose(context, r.lifeCount)
                         if (firstRecoveredGlucose) {
                             awaitingFirstReadingAfterReconnect = false
                             val durationMs = decodedTs - reconnectStartedAtMs
@@ -1430,6 +1459,7 @@ class SensorConnectionManager(
                         // 4) Persist last — fire-and-forget via the store's single serialized writer.
                         store.queueGlucose(reading)
                     } else {
+                        StaleRepaintScheduler.armFrom(context, decodedTs)
                         WearDataSync.sendGlucoseUnavailable(
                             context,
                             WearDataSync.GlucoseUnavailable(
@@ -1440,7 +1470,7 @@ class SensorConnectionManager(
                                 detail = issueDetail,
                             ),
                         )
-                        LibreComplicationUpdater.requestAll(context, r.lifeCount)
+                        LibreComplicationUpdater.requestGlucose(context, r.lifeCount)
                     }
                     // The value/unavailable event is buffered for the phone first and a usable value
                     // is queued locally before the contiguous cursor can be persisted.
@@ -1508,7 +1538,7 @@ class SensorConnectionManager(
                             store.queueSensorStatus(s.errorData, s.patchState, observedAtMs)
                             WearDataSync.sendSensorStatus(context, s.errorData, s.patchState, observedAtMs)
                             SensorAttentionNotifier.onAttentionChanged(context, s.sensorAttention)
-                            LibreComplicationUpdater.requestAll(context)
+                            LibreComplicationUpdater.requestGlucose(context)
                         }
                         val missingStart = lifeCountTracker.backfillStart(s.currentLifeCount)
                         if (missingStart != null && backfillRequests != null) {

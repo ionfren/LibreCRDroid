@@ -74,10 +74,19 @@ fun SettingsSwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
 }
 
 @Composable
-fun SettingsSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+fun SettingsSlider(
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    enabled: Boolean = true,
+    onChange: (Float) -> Unit,
+) {
     Column {
-        Text(label)
-        Slider(value = value, onValueChange = onChange, valueRange = range)
+        Text(
+            label,
+            color = if (enabled) Color.Unspecified else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+        )
+        Slider(value = value, onValueChange = onChange, valueRange = range, enabled = enabled)
     }
 }
 

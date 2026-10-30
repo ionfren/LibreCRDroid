@@ -33,7 +33,7 @@ class TrendAboveValueComplicationService : TrackedComplicationDataSourceService(
 
     override suspend fun onTrackedComplicationRequest(request: ComplicationRequest): ComplicationData {
         // In-memory live value first (instant); DataStore only when the service isn't running (cold).
-        // A fresh unavailable live reading shows "--"; real sensor errors come from patch-status.
+        // A fresh unavailable live reading shows NA; real sensor errors come from patch-status.
         val live = LibreCR.manager.glucose.value
         val appearance = LibreCR.appearance.current()
         val status = LibreCR.manager.sensorStatus.value
@@ -63,7 +63,8 @@ class TrendAboveValueComplicationService : TrackedComplicationDataSourceService(
                 "instanceId=${request.complicationInstanceId} type=${request.complicationType} " +
                 "immediate=${request.immediateResponseRequired}",
         )
-        return buildData(request.complicationType, reading, tapAction(), appearance, attention, sensorError, unavailable)
+        return buildData(request.complicationType, reading, tapAction(), appearance, attention, sensorError, unavailable,
+            valueUnavailable = liveUnavailable)
     }
 
     private fun buildData(
@@ -74,10 +75,12 @@ class TrendAboveValueComplicationService : TrackedComplicationDataSourceService(
         attention: Libre3SensorAttention = Libre3SensorAttention.None,
         sensorError: Boolean = false,
         unavailable: Boolean = false,
+        valueUnavailable: Boolean = false,
     ): ComplicationData {
         val image = Icon.createWithBitmap(
             GlucoseComplicationRenderer.buildTrendValueBitmap(
                 this, reading, appearance, attention = attention, sensorError = sensorError, unavailable = unavailable,
+                valueUnavailable = valueUnavailable,
             ),
         )
         val description = PlainComplicationText.Builder(

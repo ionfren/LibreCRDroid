@@ -36,8 +36,8 @@ android {
         applicationId = "re.abbot.librecr.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.5"
+        versionCode = 5
+        versionName = "0.1.6"
     }
 
     signingConfigs {
@@ -78,6 +78,9 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
     lint {
         disable += "NullSafeMutableLiveData"
     }
@@ -103,10 +106,15 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
+    implementation("androidx.glance:glance-appwidget:1.2.0")
+    implementation("androidx.car.app:app:1.7.0")
+    implementation("io.bimmergestalt.idriveconnectkit:idriveconnectkit:0.8")
+    implementation("io.bimmergestalt:IDriveConnectKitAndroid:0.8")
     implementation("androidx.navigation:navigation-compose:2.9.8")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
     // Real org.json so JSONObject works in JVM unit tests (android.jar's is a throwing stub).
     testImplementation("org.json:json:20240303")
 }

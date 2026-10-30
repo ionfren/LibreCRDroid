@@ -1,29 +1,19 @@
 package re.abbot.librecr.app.service
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
 import re.abbot.librecr.app.LibreCR
-import re.abbot.librecr.app.MainActivity
-import re.abbot.librecr.app.R
-import re.abbot.librecr.app.ble.ConnectionState
-import re.abbot.librecr.app.isWearGlucoseFresh
+import re.abbot.librecr.app.live.WearLiveUpdatesNotifier
 import re.abbot.librecr.app.log.BleLog
-import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 
 /**
  * Foreground service (type connectedDevice) that keeps the connection loop alive
@@ -32,29 +22,28 @@ import re.abbot.librecr.protocol.dataplane.SensorLifecycle
  */
 class SensorForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var glucoseCollectorJob: Job? = null
-    private var warmupDurationMinutes = SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         LibreCR.init(this)
-        createChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundCompat(buildNotification("Starting…"))
+        WearLiveUpdatesNotifier.startForeground(this)
         val allowCandidateFirstPair = intent?.getBooleanExtra(EXTRA_ALLOW_CANDIDATE_FIRST_PAIR, false) == true
         scope.launch {
             val session = LibreCR.store.loadSession()
-            if (session == null) {
-                BleLog.log("service: no imported session; stopping")
+            if (session == null || !LibreCR.store.autoConnectEnabled()) {
+                BleLog.log("service: no session or receiver disabled; stopping")
                 stopSelf()
                 return@launch
             }
-            warmupDurationMinutes =
-                session.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
+            if (!AutomaticSensorHandoff.mayStartLocalSession()) {
+                stopSelf()
+                return@launch
+            }
             BleLog.log(
                 "service: starting sensor manager with independent local handshake " +
                     "allowCandidateFirstPair=$allowCandidateFirstPair legacyKeyIgnored=${session.phase5RawKey != null}"
@@ -63,28 +52,8 @@ class SensorForegroundService : Service() {
                 scope,
                 session.withoutTransientCrypto(),
                 allowCandidateFirstPair = allowCandidateFirstPair,
+                passiveConnect = intent?.getBooleanExtra(EXTRA_PASSIVE_CONNECT, false) == true,
             )
-        }
-        if (glucoseCollectorJob?.isActive != true) {
-            glucoseCollectorJob = scope.launch {
-                combine(
-                    LibreCR.manager.glucose,
-                    LibreCR.appearance.settingsFlow,
-                    LibreCR.manager.state,
-                ) { g, appearance, state -> Triple(g, appearance.unit, state) }.collectLatest { (g, unit, state) ->
-                    val text = when {
-                        g == null && state.isUnavailableForDisplay() -> getString(R.string.sensor_unavailable)
-                        g == null -> getString(R.string.sensor_unavailable)
-                        !g.usable && g.lifeCount < warmupDurationMinutes -> getString(R.string.sensor_warming_up)
-                        !g.usable -> getString(R.string.sensor_unavailable)
-                        state.isUnavailableForDisplay() && !isFresh(g.receivedAtMs) ->
-                            getString(R.string.sensor_unavailable)
-                        g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
-                        else -> getString(R.string.sensor_unavailable)
-                    }
-                    notify(text)
-                }
-            }
         }
         return START_STICKY
     }
@@ -92,61 +61,19 @@ class SensorForegroundService : Service() {
     override fun onDestroy() {
         LibreCR.manager.stop()
         scope.cancel()
+        WearLiveUpdatesNotifier.stopForeground(this)
         super.onDestroy()
     }
 
-    private fun startForegroundCompat(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-        } else {
-            startForeground(NOTIF_ID, notification)
-        }
-    }
-
-    private fun notify(text: String) {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID, buildNotification(text))
-    }
-
-    private fun buildNotification(text: String): Notification {
-        val pi = android.app.PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            android.app.PendingIntent.FLAG_IMMUTABLE,
-        )
-        return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("LibreCR sensor")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)
-            .setContentIntent(pi)
-            .build()
-    }
-
-    private fun createChannel() {
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channel = NotificationChannel(CHANNEL_ID, "Sensor connection", NotificationManager.IMPORTANCE_LOW)
-        nm.createNotificationChannel(channel)
-    }
-
-    private fun ConnectionState.isUnavailableForDisplay(): Boolean =
-        this == ConnectionState.SCANNING ||
-            this == ConnectionState.CONNECTING ||
-            this == ConnectionState.HANDSHAKING ||
-            this == ConnectionState.RECONNECTING ||
-            this == ConnectionState.ERROR
-
-    private fun isFresh(receivedAtMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean =
-        isWearGlucoseFresh(receivedAtMs, nowMs)
-
     companion object {
-        private const val CHANNEL_ID = "librecr_sensor"
-        private const val NOTIF_ID = 1
+        private const val EXTRA_PASSIVE_CONNECT = "librecr.PASSIVE_CONNECT"
         private const val EXTRA_ALLOW_CANDIDATE_FIRST_PAIR =
             "re.abbot.librecr.app.extra.ALLOW_CANDIDATE_FIRST_PAIR"
 
-        fun start(context: Context, allowCandidateFirstPair: Boolean = false): Boolean {
+        fun start(context: Context, allowCandidateFirstPair: Boolean = false, passiveConnect: Boolean = false): Boolean {
             val intent = Intent(context, SensorForegroundService::class.java)
                 .putExtra(EXTRA_ALLOW_CANDIDATE_FIRST_PAIR, allowCandidateFirstPair)
+                .putExtra(EXTRA_PASSIVE_CONNECT, passiveConnect)
             return runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
                 else context.startService(intent)

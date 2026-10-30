@@ -1,15 +1,18 @@
 package re.abbot.librecr.app.wear
 
+import com.google.android.gms.tasks.Task
 import com.google.android.gms.wearable.MessageEvent
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.WearableListenerService
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import re.abbot.librecr.protocol.connection.RecoveryPolicy
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.alarm.StalenessWatchdog
@@ -35,7 +38,16 @@ class PhoneWearListenerService : WearableListenerService() {
     override fun onPeerConnected(peer: Node) {
         super.onPeerConnected(peer)
         WearDataSync.enforcePersistedSelection(this)
+        scope.launch {
+            val settings = LibreCR.settings.current()
+            WearDataSync.sendAutomaticHandoffSettings(this@PhoneWearListenerService,
+                settings.automaticSensorHandoffEnabled, settings.selectedWearNodeId)
+        }
+        AutomaticSensorHandoff.onPeerConnected()
     }
+
+    override fun onRequest(nodeId: String, path: String, data: ByteArray): Task<ByteArray>? =
+        AutomaticSensorHandoff.onRequest(nodeId, path, data) ?: super.onRequest(nodeId, path, data)
 
     override fun onMessageReceived(messageEvent: MessageEvent) {
         val sourceNodeId = messageEvent.sourceNodeId
@@ -48,6 +60,7 @@ class PhoneWearListenerService : WearableListenerService() {
                 return@launch
             }
             when (path) {
+                RecoveryPolicy.SESSION_BACKUP -> ReceiverSessionBackup.receive(sourceNodeId, data)
                 WearDataSync.PATH_SESSION,
                 WearDataSync.PATH_START -> receiveSession(data)
                 WearDataSync.PATH_STOP -> stopLocalConnection()
@@ -58,15 +71,17 @@ class PhoneWearListenerService : WearableListenerService() {
                         "message",
                         publishLatest = true,
                         phoneReceivedTs = phoneReceivedTs,
+                        sourceNodeId = sourceNodeId,
                     )
                 WearDataSync.PATH_GLUCOSE_UNAVAILABLE ->
-                    receiveGlucoseUnavailable(data, "message")
+                    receiveGlucoseUnavailable(data, "message", sourceNodeId)
                 WearDataSync.PATH_GLUCOSE_REPLAY ->
                     receiveGlucose(
                         data,
                         "message replay",
                         publishLatest = false,
                         phoneReceivedTs = phoneReceivedTs,
+                        sourceNodeId = sourceNodeId,
                     )
                 WearDataSync.PATH_SENSOR_STATUS -> receiveSensorStatus(data, "message")
                 WearDataSync.PATH_LOG -> ingestWatchLog(data)
@@ -88,21 +103,25 @@ class PhoneWearListenerService : WearableListenerService() {
                         BleLog.log("wear: ignored data item $path from non-selected node=$sourceNodeId")
                         return@launch
                     }
-                    if (path == WearDataSync.PATH_GLUCOSE) {
+                    if (path == RecoveryPolicy.SESSION_BACKUP) {
+                        ReceiverSessionBackup.receive(sourceNodeId, data)
+                    } else if (path == WearDataSync.PATH_GLUCOSE) {
                         receiveGlucose(
                             data,
                             "data item",
                             publishLatest = true,
                             phoneReceivedTs = phoneReceivedTs,
+                            sourceNodeId = sourceNodeId,
                         )
                     } else if (path == WearDataSync.PATH_GLUCOSE_UNAVAILABLE) {
-                        receiveGlucoseUnavailable(data, "data item")
+                        receiveGlucoseUnavailable(data, "data item", sourceNodeId)
                     } else if (path.startsWith(WearDataSync.PATH_GLUCOSE_REPLAY_PREFIX)) {
                         receiveGlucose(
                             data,
                             "data item replay",
                             publishLatest = false,
                             phoneReceivedTs = phoneReceivedTs,
+                            sourceNodeId = sourceNodeId,
                         )
                     } else if (path == WearDataSync.PATH_SENSOR_STATUS) {
                         receiveSensorStatus(data, "data item")
@@ -119,11 +138,22 @@ class PhoneWearListenerService : WearableListenerService() {
         source: String,
         publishLatest: Boolean,
         phoneReceivedTs: Long,
+        sourceNodeId: String,
     ) {
         scope.launch {
             runCatching {
                 val reading = WearDataSync.parseGlucose(bytes)
-                if (publishLatest) {
+                val sensorAddress = JSONObject(String(bytes, Charsets.UTF_8)).optString("bleAddress")
+                val session = LibreCR.store.loadSession()
+                if (sensorAddress.isNotBlank() && session != null && !session.bleAddress.equals(sensorAddress, true)) {
+                    WearDataSync.sendGlucoseAck(this@PhoneWearListenerService, reading.lifeCount)
+                    return@runCatching
+                }
+                if (publishLatest) AutomaticSensorHandoff.onRemotePacket(
+                    sourceNodeId, sensorAddress, reading.lifeCount, reading.receivedAtMs, source == "message",
+                )
+                val automaticPhoneOwner = AutomaticSensorHandoff.ownsPhoneConnection
+                if (publishLatest && !automaticPhoneOwner) {
                     LibreCR.manager.acceptRemoteGlucose(reading)
                     // Any live relay (even a duplicate) proves the watch→phone pipeline is alive.
                     StalenessWatchdog.onFreshReading(this@PhoneWearListenerService)
@@ -141,7 +171,7 @@ class PhoneWearListenerService : WearableListenerService() {
                     GlucoseTimelineTracker.onPhoneReceived(WearDataSync.parseTimeline(bytes, phoneReceivedTs))
                 }
                 val advancedLatest = LibreCR.store.saveRemoteGlucose(reading)
-                if (advancedLatest) {
+                if (advancedLatest && !automaticPhoneOwner) {
                     LibreCR.store.setWatchTakeoverEnabled(true)
                 }
                 BleLog.log(
@@ -154,7 +184,7 @@ class PhoneWearListenerService : WearableListenerService() {
                 // one connected receiver, so the phone yields its own BLE to avoid the two fighting
                 // over the single slot (which alternates readings → every-2-minutes). Acts once;
                 // an explicit "return to phone" handoff re-enables auto-connect.
-                if (advancedLatest && LibreCR.store.autoConnectEnabled()) {
+                if (advancedLatest && !AutomaticSensorHandoff.ownsPhoneConnection && LibreCR.store.autoConnectEnabled()) {
                     BleLog.log("wear: watch is active receiver → phone yielding BLE")
                     LibreCR.store.setAutoConnectEnabled(false)
                     val stopped = LibreCR.manager.stopAndJoin()
@@ -167,10 +197,15 @@ class PhoneWearListenerService : WearableListenerService() {
         }
     }
 
-    private fun receiveGlucoseUnavailable(bytes: ByteArray, source: String) {
+    private fun receiveGlucoseUnavailable(bytes: ByteArray, source: String, sourceNodeId: String) {
         scope.launch {
             runCatching {
                 val event = WearDataSync.parseGlucoseUnavailable(bytes)
+                val sensorAddress = JSONObject(String(bytes, Charsets.UTF_8)).optString("bleAddress")
+                val session = LibreCR.store.loadSession()
+                if (sensorAddress.isNotBlank() && session != null && !session.bleAddress.equals(sensorAddress, true)) return@runCatching
+                AutomaticSensorHandoff.onRemotePacket(sourceNodeId, sensorAddress, event.lifeCount, event.receivedAtMs, source == "message")
+                if (AutomaticSensorHandoff.ownsPhoneConnection) return@runCatching
                 LibreCR.manager.acceptRemoteGlucoseUnavailable(event)
                 // An unusable reading is still a liveness proof — sensor-error states must not
                 // double-alert as staleness (SensorAttentionNotifier owns real sensor errors).
@@ -238,6 +273,7 @@ class PhoneWearListenerService : WearableListenerService() {
 
     private fun stopLocalConnection() {
         scope.launch {
+            AutomaticSensorHandoff.cancel()
             val wasActive = LibreCR.manager.state.value.isActiveStopTarget()
             LibreCR.store.setAutoConnectEnabled(false)
             val stopped = LibreCR.manager.stopAndJoin()

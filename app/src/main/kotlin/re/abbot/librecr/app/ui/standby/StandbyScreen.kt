@@ -321,7 +321,7 @@ private fun StandbyGlucosePanel(
         displayStatus == GlucoseDisplayStatus.SENSOR_WARMUP -> stringResource(R.string.sensor_warming_up)
         glucose == null -> stringResource(R.string.standby_no_reading)
         glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.SENSOR_ERROR -> stringResource(R.string.sensor_error_short)
-        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> "--"
+        glucose.mgDL == null && displayStatus == GlucoseDisplayStatus.OUT_OF_RANGE -> "NA"
         glucose.mgDL == null -> stringResource(R.string.standby_no_reading)
         else -> settings.unit.format(glucose.mgDL)
     }
@@ -427,7 +427,9 @@ private data class StandbyBurnInFrame(
 )
 
 private const val BURN_IN_PERIOD_MS = 45_000L
-private val StandbyBlack = Color(0xFF000000)
+// Keep this independent from MaterialTheme.background. The app's dark theme is intentionally
+// blue/teal, but this surface must be true black so OLED pixels can switch off.
+private val StandbyBlack = Color.Black
 private val StandbyRed = Color(0xFFFF3B30)
 private val STANDBY_BURN_IN_FRAMES = listOf(
     StandbyBurnInFrame(0.dp, 0.dp, 0.920f, 1.0000f, 0.000f),

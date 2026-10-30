@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="wear_app_name">LibreCR Wear</string>
+    <string name="wear_app_name" translatable="false">LibreCR Wear</string>
     <string name="complication_age_delta">Timp + delta/min</string>
     <string name="complication_trend_above_value">Trend deasupra valorii</string>
     <string name="complication_date">Data</string>
@@ -9,4 +9,7 @@
     <string name="sensor_error_short" translatable="false">S.E.</string>
     <string name="sensor_unavailable">Fără citire</string>
     <string name="sensor_warming_up">Încălzire senzor</string>
+    <string name="recovery_channel">Recuperarea conexiunii</string>
+    <string name="recovery_title">Telefonul colectează de la senzor</string>
+    <string name="recovery_monitoring">Ceasul poate relua conectarea dacă telefonul nu mai răspunde.</string>
 </resources>

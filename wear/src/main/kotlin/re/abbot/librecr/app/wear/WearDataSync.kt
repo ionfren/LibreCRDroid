@@ -62,6 +62,7 @@ object WearDataSync {
     private data class BufferedGlucose(
         val reading: SensorStateStore.LastGlucose,
         val timeline: GlucoseTimeline?,
+        val sensorAddress: String,
         var lastSentAtMs: Long = 0L,
         var attempts: Int = 0,
     )
@@ -69,6 +70,7 @@ object WearDataSync {
     private data class SendSnapshot(
         val reading: SensorStateStore.LastGlucose,
         val timeline: GlucoseTimeline?,
+        val sensorAddress: String,
         val sentAtMs: Long,
         val attempt: Int,
     )
@@ -172,6 +174,7 @@ object WearDataSync {
             return
         }
         val payload = JSONObject()
+            .put("bleAddress", AutomaticSensorHandoff.localSensorAddress)
             .put("lifeCount", event.lifeCount)
             .put("trend", event.trend)
             .put("receivedAtMs", event.receivedAtMs)
@@ -434,6 +437,7 @@ object WearDataSync {
             glucoseBuffer[reading.lifeCount] = BufferedGlucose(
                 reading = reading,
                 timeline = timeline,
+                sensorAddress = AutomaticSensorHandoff.localSensorAddress,
             )
             while (glucoseBuffer.size > GLUCOSE_BUFFER_SIZE) {
                 val oldest = glucoseBuffer.keys.firstOrNull() ?: break
@@ -531,6 +535,7 @@ object WearDataSync {
             SendSnapshot(
                 reading = item.reading,
                 timeline = item.timeline,
+                sensorAddress = item.sensorAddress,
                 sentAtMs = sentAt,
                 attempt = item.attempts,
             )
@@ -540,6 +545,7 @@ object WearDataSync {
     private fun buildGlucosePayload(snapshot: SendSnapshot, reason: String): ByteArray {
         val reading = snapshot.reading
         return JSONObject().apply {
+            put("bleAddress", snapshot.sensorAddress)
             put("lifeCount", reading.lifeCount)
             put("mgDL", reading.mgDL)
             put("trend", reading.trend)

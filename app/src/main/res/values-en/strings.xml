@@ -336,4 +336,10 @@
     <string name="agreement_accept">I Agree</string>
     <string name="agreement_exit">Exit</string>
     <string name="agreement_body">LibreCRDroid is experimental, open-source software that reads a FreeStyle Libre 3 sensor over Bluetooth. It is NOT a medical device and is NOT approved or certified for any medical use.\n\n• Do not make any treatment, dosing, or medical decision based on this app. Always confirm with a fingerstick blood glucose meter and follow your healthcare professional\'s advice.\n\n• The app reverse-engineers an undocumented protocol and may stop working, show wrong values, miss readings, or fail without notice.\n\n• Using the app may affect the sensor, including its battery and lifetime; the developers are not responsible for any sensor loss or malfunction.\n\n• This project is not affiliated with, endorsed by, or supported by Abbott. FreeStyle and Libre are trademarks of their respective owners.\n\n• The software is provided \"as is\", without any warranty. You use it entirely at your own risk. The developers accept no liability for any harm, injury, or loss arising from its use.\n\nBy tapping \"I Agree\" you confirm that you have read and understood this agreement and accept full responsibility for using the app.</string>
+    <string name="automatic_handoff_title">Automatic watch–phone handoff</string>
+    <string name="automatic_handoff_enabled">Enable automatic handoff</string>
+    <string name="automatic_handoff_description">After 3 failed watch reconnects or 3 minutes without new data, the phone tries to take over the sensor, even if the watch battery is empty. After 5 consecutive new readings, the connection returns to the same watch if it is nearby and has enough battery. A notification keeps background recovery active. Turning this off keeps the current collector.</string>
+    <string name="recovery_channel">Connection recovery</string>
+    <string name="recovery_title">Sensor backup receiver</string>
+    <string name="recovery_monitoring">Monitors the watch connection and can recover the sensor if the watch stops responding.</string>
 </resources>

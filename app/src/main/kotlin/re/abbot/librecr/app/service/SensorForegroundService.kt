@@ -41,6 +41,7 @@ class SensorForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         LibreCR.init(this)
+        running = true
         createChannel()
     }
 
@@ -49,8 +50,8 @@ class SensorForegroundService : Service() {
         val allowCandidateFirstPair = intent?.getBooleanExtra(EXTRA_ALLOW_CANDIDATE_FIRST_PAIR, false) == true
         scope.launch {
             val session = LibreCR.store.loadSession()
-            if (session == null) {
-                BleLog.log("service: no imported session; stopping")
+            if (session == null || !LibreCR.store.autoConnectEnabled()) {
+                BleLog.log("service: no session or receiver disabled; stopping")
                 stopSelf()
                 return@launch
             }
@@ -64,6 +65,7 @@ class SensorForegroundService : Service() {
                 scope,
                 session.withoutTransientCrypto(),
                 allowCandidateFirstPair = allowCandidateFirstPair,
+                passiveConnect = intent?.getBooleanExtra(EXTRA_PASSIVE_CONNECT, false) == true,
             )
         }
         if (glucoseCollectorJob?.isActive != true) {
@@ -80,13 +82,13 @@ class SensorForegroundService : Service() {
                         g == null && state.isUnavailableForGlucoseDisplay() -> getString(R.string.standby_no_reading)
                         g == null -> getString(R.string.standby_no_reading)
                         !g.usable && g.lifeCount < warmupDurationMinutes -> getString(R.string.sensor_warming_up)
-                        !g.usable -> getString(R.string.standby_no_reading)
+                        !g.usable -> "NA"
                         state.isUnavailableForGlucoseDisplay() && !isFreshGlucose(g.receivedAtMs) ->
                             getString(R.string.standby_no_reading)
                         g.mgDL != null -> "${unit.formatWithUnit(g.mgDL)}  ${g.trend}"
                         else -> getString(R.string.standby_no_reading)
                     }
-                    notify(text)
+                    notify(text, g?.receivedAtMs)
                 }
             }
         }
@@ -94,6 +96,7 @@ class SensorForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         LibreCR.manager.stop()
         scope.cancel()
         super.onDestroy()
@@ -107,17 +110,19 @@ class SensorForegroundService : Service() {
         }
     }
 
-    private fun notify(text: String) {
+    private fun notify(text: String, observedAtMs: Long?) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIF_ID, buildNotification(text))
+        nm.notify(NOTIF_ID, buildNotification(text, observedAtMs))
     }
 
-    private fun buildNotification(text: String): Notification {
+    private fun buildNotification(text: String, observedAtMs: Long? = null): Notification {
         val pi = android.app.PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             android.app.PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL_ID)
+            .setWhen(observedAtMs ?: System.currentTimeMillis())
+            .setShowWhen(observedAtMs != null && observedAtMs > 0L)
             .setContentTitle("LibreCR sensor")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -133,14 +138,18 @@ class SensorForegroundService : Service() {
     }
 
     companion object {
+        @Volatile var running = false
+            private set
+        private const val EXTRA_PASSIVE_CONNECT = "librecr.PASSIVE_CONNECT"
         private const val CHANNEL_ID = "librecr_sensor"
         private const val NOTIF_ID = 1
         private const val EXTRA_ALLOW_CANDIDATE_FIRST_PAIR =
             "re.abbot.librecr.app.extra.ALLOW_CANDIDATE_FIRST_PAIR"
 
-        fun start(context: Context, allowCandidateFirstPair: Boolean = false): Boolean {
+        fun start(context: Context, allowCandidateFirstPair: Boolean = false, passiveConnect: Boolean = false): Boolean {
             val intent = Intent(context, SensorForegroundService::class.java)
                 .putExtra(EXTRA_ALLOW_CANDIDATE_FIRST_PAIR, allowCandidateFirstPair)
+                .putExtra(EXTRA_PASSIVE_CONNECT, passiveConnect)
             return runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
                 else context.startService(intent)

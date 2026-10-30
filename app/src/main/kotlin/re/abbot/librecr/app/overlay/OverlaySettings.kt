@@ -20,7 +20,13 @@ internal data class FloatingSettings(
     val dynamicIsland: Boolean,
     val islandVerticalOffsetDp: Float,
     val islandGapDp: Float,
+    /** Pill size in island mode; 0 = follow the text. Lets the pill match the cutout, not the font. */
+    val islandWidthDp: Float,
+    val islandHeightDp: Float,
+    /** Nudges the delta group (delta + unit) sideways; negative pulls it back towards the value. */
+    val deltaOffsetDp: Float,
     val subtleOutline: Boolean,
+    val glucoseRangeColors: Boolean,
 ) {
     companion object {
         const val KEY_ENABLED = "floating_glucose_enabled"
@@ -33,10 +39,16 @@ internal data class FloatingSettings(
         const val KEY_Y = "floating_y"
         const val KEY_CORNER_RADIUS = "floating_corner_radius"
         const val KEY_OPACITY = "floating_opacity"
+        /** Camera-cutout width the island straddles by default; 0 is a valid user choice. */
+        const val DEFAULT_ISLAND_GAP_DP = 70f
         const val KEY_DYNAMIC_ISLAND = "floating_dynamic_island"
         const val KEY_ISLAND_VERTICAL_OFFSET = "floating_island_vertical_offset"
         const val KEY_ISLAND_GAP = "floating_island_gap"
+        const val KEY_ISLAND_WIDTH = "floating_island_width"
+        const val KEY_ISLAND_HEIGHT = "floating_island_height"
+        const val KEY_DELTA_OFFSET = "floating_delta_offset"
         const val KEY_SUBTLE_OUTLINE = "floating_subtle_outline"
+        const val KEY_GLUCOSE_RANGE_COLORS = "floating_glucose_range_colors"
 
         fun load(context: Context): FloatingSettings = context.overlayPrefs().let { prefs ->
             FloatingSettings(
@@ -52,8 +64,12 @@ internal data class FloatingSettings(
                 opacity = prefs.getFloat(KEY_OPACITY, 0.6f).coerceIn(0.1f, 1f),
                 dynamicIsland = prefs.getBoolean(KEY_DYNAMIC_ISLAND, false),
                 islandVerticalOffsetDp = prefs.getFloat(KEY_ISLAND_VERTICAL_OFFSET, 0f).coerceIn(0f, 96f),
-                islandGapDp = prefs.getFloat(KEY_ISLAND_GAP, 0f).coerceIn(0f, 220f),
+                islandGapDp = prefs.getFloat(KEY_ISLAND_GAP, DEFAULT_ISLAND_GAP_DP).coerceIn(0f, 220f),
+                islandWidthDp = prefs.getFloat(KEY_ISLAND_WIDTH, 0f).coerceIn(0f, 420f),
+                islandHeightDp = prefs.getFloat(KEY_ISLAND_HEIGHT, 0f).coerceIn(0f, 96f),
+                deltaOffsetDp = prefs.getFloat(KEY_DELTA_OFFSET, 0f).coerceIn(-80f, 80f),
                 subtleOutline = prefs.getBoolean(KEY_SUBTLE_OUTLINE, false),
+                glucoseRangeColors = prefs.getBoolean(KEY_GLUCOSE_RANGE_COLORS, true),
             )
         }
     }
@@ -63,14 +79,21 @@ internal data class AodSettings(
     val enabled: Boolean,
     val opacity: Float,
     val backgroundColor: Int,
+    /** The widget's tinted surface instead of [backgroundColor]; lights more OLED pixels. */
+    val widgetSurface: Boolean,
     val textScale: Float,
     val chartScale: Float,
+    /** A fixed card box instead of the content's own size; the chart then fills what is left. */
+    val fixedSize: Boolean,
+    /** Fixed box, as fractions of the screen width and height. */
+    val widthFraction: Float,
+    val heightFraction: Float,
     val verticalPosition: Float,
     val showChart: Boolean,
     val showArrow: Boolean,
     val showSecondary: Boolean,
-    val chartInRangeColor: Int,
-    val chartOutOfRangeColor: Int,
+    /** Sensor wear-life bar with the final 24 h in red, so a due sensor change is visible on AOD. */
+    val showSensorLife: Boolean,
     val arrowScale: Float,
     val arrowVerticalOffsetDp: Float,
     val metaScale: Float,
@@ -82,14 +105,17 @@ internal data class AodSettings(
         const val KEY_ENABLED = "aod_overlay_enabled"
         const val KEY_OPACITY = "aod_opacity"
         const val KEY_BACKGROUND_COLOR = "aod_background_color"
+        const val KEY_WIDGET_SURFACE = "aod_widget_surface"
         const val KEY_TEXT_SCALE = "aod_text_scale"
         const val KEY_CHART_SCALE = "aod_chart_scale"
+        const val KEY_FIXED_SIZE = "aod_fixed_size"
+        const val KEY_WIDTH_FRACTION = "aod_width_fraction"
+        const val KEY_HEIGHT_FRACTION = "aod_height_fraction"
         const val KEY_VERTICAL_POSITION = "aod_vertical_position"
         const val KEY_SHOW_CHART = "aod_show_chart"
         const val KEY_SHOW_ARROW = "aod_show_arrow"
         const val KEY_SHOW_SECONDARY = "aod_show_secondary"
-        const val KEY_CHART_IN_RANGE_COLOR = "aod_chart_in_range_color"
-        const val KEY_CHART_OUT_OF_RANGE_COLOR = "aod_chart_out_of_range_color"
+        const val KEY_SHOW_SENSOR_LIFE = "aod_show_sensor_life"
         const val KEY_ARROW_SCALE = "aod_arrow_scale"
         const val KEY_ARROW_VERTICAL_OFFSET = "aod_arrow_vertical_offset"
         const val KEY_META_SCALE = "aod_meta_scale"
@@ -108,14 +134,17 @@ internal data class AodSettings(
                 enabled = prefs.getBoolean(KEY_ENABLED, false),
                 opacity = prefs.getFloat(KEY_OPACITY, 1f).coerceIn(0.35f, 1f),
                 backgroundColor = prefs.getInt(KEY_BACKGROUND_COLOR, Color.BLACK),
+                widgetSurface = prefs.getBoolean(KEY_WIDGET_SURFACE, false),
                 textScale = prefs.getFloat(KEY_TEXT_SCALE, 1.2f).coerceIn(0.5f, 6f),
                 chartScale = prefs.getFloat(KEY_CHART_SCALE, 0.9f).coerceIn(0.5f, 2f),
+                fixedSize = prefs.getBoolean(KEY_FIXED_SIZE, false),
+                widthFraction = prefs.getFloat(KEY_WIDTH_FRACTION, 0.9f).coerceIn(0.3f, 1f),
+                heightFraction = prefs.getFloat(KEY_HEIGHT_FRACTION, 0.22f).coerceIn(0.1f, 0.6f),
                 verticalPosition = prefs.getFloat(KEY_VERTICAL_POSITION, 0.5f).coerceIn(0f, 1f),
                 showChart = prefs.getBoolean(KEY_SHOW_CHART, true),
                 showArrow = prefs.getBoolean(KEY_SHOW_ARROW, true),
                 showSecondary = prefs.getBoolean(KEY_SHOW_SECONDARY, false),
-                chartInRangeColor = prefs.getInt(KEY_CHART_IN_RANGE_COLOR, 0xFF30D158.toInt()),
-                chartOutOfRangeColor = prefs.getInt(KEY_CHART_OUT_OF_RANGE_COLOR, 0xFFFF9F0A.toInt()),
+                showSensorLife = prefs.getBoolean(KEY_SHOW_SENSOR_LIFE, true),
                 arrowScale = prefs.getFloat(KEY_ARROW_SCALE, 1f).coerceIn(0.5f, 2f),
                 arrowVerticalOffsetDp = prefs.getFloat(KEY_ARROW_VERTICAL_OFFSET, 0f).coerceIn(-20f, 20f),
                 metaScale = prefs.getFloat(KEY_META_SCALE, 1f).coerceIn(0.5f, 3f),

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">LibreCRDroid</string>
+    <string name="app_name" translatable="false">LibreCRDroid</string>
     <string name="aod_accessibility_description">Afișează glicemia doar pe Always On Display.</string>
 
     <!-- Navigation + screen titles -->
@@ -338,4 +338,10 @@
     <string name="agreement_accept">Sunt de acord</string>
     <string name="agreement_exit">Ieșire</string>
     <string name="agreement_body">LibreCRDroid este software experimental, open-source, care citește un senzor FreeStyle Libre 3 prin Bluetooth. NU este un dispozitiv medical și NU este aprobat sau certificat pentru utilizare medicală.\n\n• Nu lua nicio decizie de tratament, dozare sau medicală pe baza acestei aplicații. Confirmă întotdeauna cu un glucometru cu înțepare și urmează sfatul medicului.\n\n• Aplicația folosește inginerie inversă pe un protocol nedocumentat și se poate opri, poate afișa valori greșite, poate rata citiri sau poate eșua fără avertisment.\n\n• Utilizarea aplicației poate afecta senzorul, inclusiv bateria și durata lui de viață; dezvoltatorii nu sunt responsabili pentru pierderea sau defectarea senzorului.\n\n• Acest proiect nu este afiliat, aprobat sau susținut de Abbott. FreeStyle și Libre sunt mărci ale deținătorilor lor.\n\n• Software-ul este oferit „ca atare”, fără nicio garanție. Îl folosești pe propriul risc. Dezvoltatorii nu își asumă nicio răspundere pentru daune, vătămări sau pierderi rezultate din utilizare.\n\nApăsând „Sunt de acord” confirmi că ai citit și ai înțeles acest acord și îți asumi întreaga responsabilitate pentru utilizarea aplicației.</string>
+    <string name="automatic_handoff_title">Transfer automat ceas–telefon</string>
+    <string name="automatic_handoff_enabled">Activează transferul automat</string>
+    <string name="automatic_handoff_description">După 3 reconectări eșuate ale ceasului sau 3 minute fără date noi, telefonul încearcă să preia senzorul, inclusiv când ceasul este descărcat. După 5 valori noi consecutive, conexiunea revine la același ceas dacă este în apropiere și are baterie suficientă. O notificare menține recuperarea activă în fundal. Dezactivarea păstrează dispozitivul care colectează deja.</string>
+    <string name="recovery_channel">Recuperarea conexiunii</string>
+    <string name="recovery_title">Telefon de rezervă pentru senzor</string>
+    <string name="recovery_monitoring">Supraveghează conexiunea ceasului și poate recupera senzorul dacă acesta nu mai răspunde.</string>
 </resources>

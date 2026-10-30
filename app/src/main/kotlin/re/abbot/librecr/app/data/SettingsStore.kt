@@ -62,6 +62,8 @@ data class AppSettings(
     val targetHigh: Int = 180,
     /** Diagnostic logging is opt-in and remains disabled across process/app restarts by default. */
     val diagnosticLoggingEnabled: Boolean = false,
+    /** Temporarily collect on the nearby phone after repeated watch reconnect failures. */
+    val automaticSensorHandoffEnabled: Boolean = false,
     /** Blank keeps the legacy single-watch automatic routing; otherwise this is the active Wear node. */
     val selectedWearNodeId: String = "",
     /** Last known display name, retained so a temporarily disconnected selected watch stays visible. */
@@ -74,6 +76,11 @@ data class AppSettings(
     val alarms: AlarmSettings = AlarmSettings(),
     val cloud: CloudSettings = CloudSettings(),
     val liveUpdates: LiveUpdateSettings = LiveUpdateSettings(),
+    /** Opt-in experimental glucose notifications during Android Auto projection only. */
+    val androidAutoNotificationsEnabled: Boolean = false,
+    /** Dedicated BMW Connected Apps screen, started by AAIdrive while the car is connected. */
+    val bmwIDriveEnabled: Boolean = false,
+    val bmwIDriveDisplayMode: BmwIDriveDisplayMode = BmwIDriveDisplayMode.AUTO,
     val wearAppearance: WearAppearanceSettings = WearAppearanceSettings()
         .withTargets(targetLow, targetHigh),
     /** Whether the user has accepted the one-time use agreement / medical disclaimer. */
@@ -89,6 +96,7 @@ class SettingsStore(private val context: Context) {
     private val keyTargetLow = intPreferencesKey("target_low")
     private val keyTargetHigh = intPreferencesKey("target_high")
     private val keyDiagnosticLoggingEnabled = booleanPreferencesKey("diagnostic_logging_enabled")
+    private val keyAutomaticSensorHandoffEnabled = booleanPreferencesKey("automatic_sensor_handoff_enabled")
     private val keySelectedWearNodeId = stringPreferencesKey("selected_wear_node_id")
     private val keySelectedWearNodeName = stringPreferencesKey("selected_wear_node_name")
     private val keyAgreementAccepted = booleanPreferencesKey("agreement_accepted")
@@ -121,6 +129,9 @@ class SettingsStore(private val context: Context) {
     private val keyCloudPassword = stringPreferencesKey("cloud_password")
 
     private val keyLiveUpdatesEnabled = booleanPreferencesKey("live_updates_enabled")
+    private val keyAndroidAutoNotificationsEnabled = booleanPreferencesKey("android_auto_notifications_enabled")
+    private val keyBmwIDriveEnabled = booleanPreferencesKey("bmw_idrive_enabled")
+    private val keyBmwIDriveDisplayMode = stringPreferencesKey("bmw_idrive_display_mode")
     private val keyLiveUpdatesStatusChipEnabled = booleanPreferencesKey("live_updates_status_chip_enabled")
     private val keyLiveUpdatesShowOnHomeScreen = booleanPreferencesKey("live_updates_show_on_home_screen")
     private val keyLiveUpdatesShowTrendInChip = booleanPreferencesKey("live_updates_show_trend_in_chip")
@@ -152,6 +163,7 @@ class SettingsStore(private val context: Context) {
             targetLow = targetLow,
             targetHigh = targetHigh,
             diagnosticLoggingEnabled = p[keyDiagnosticLoggingEnabled] ?: false,
+            automaticSensorHandoffEnabled = p[keyAutomaticSensorHandoffEnabled] ?: false,
             selectedWearNodeId = p[keySelectedWearNodeId] ?: "",
             selectedWearNodeName = p[keySelectedWearNodeName] ?: "",
             agreementAccepted = p[keyAgreementAccepted] ?: false,
@@ -193,6 +205,9 @@ class SettingsStore(private val context: Context) {
                 showTrendOnLockScreen = p[keyLiveUpdatesShowTrendOnLockScreen] ?: true,
                 showDeltaOnLockScreen = p[keyLiveUpdatesShowDeltaOnLockScreen] ?: true,
             ),
+            androidAutoNotificationsEnabled = p[keyAndroidAutoNotificationsEnabled] ?: false,
+            bmwIDriveEnabled = p[keyBmwIDriveEnabled] ?: false,
+            bmwIDriveDisplayMode = BmwIDriveDisplayMode.fromName(p[keyBmwIDriveDisplayMode]),
             wearAppearance = WearAppearanceSettings(
                 fontWeight = WearDisplayFontWeight.fromName(p[keyWearFontWeight]),
                 glucoseLowColor = p[keyWearGlucoseLowColor] ?: wearDefaults.glucoseLowColor,
@@ -242,6 +257,18 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setUnit(unit: GlucoseUnit) = edit { it[keyUnit] = unit.name }
 
+    suspend fun setBmwIDriveEnabled(enabled: Boolean) = edit {
+        it[keyBmwIDriveEnabled] = enabled
+    }
+
+    suspend fun setBmwIDriveDisplayMode(mode: BmwIDriveDisplayMode) = edit {
+        it[keyBmwIDriveDisplayMode] = mode.name
+    }
+
+    suspend fun setAndroidAutoNotificationsEnabled(enabled: Boolean) = edit {
+        it[keyAndroidAutoNotificationsEnabled] = enabled
+    }
+
     suspend fun setTargets(low: Int, high: Int) = edit {
         it[keyTargetLow] = low
         it[keyTargetHigh] = high
@@ -249,6 +276,10 @@ class SettingsStore(private val context: Context) {
 
     suspend fun setDiagnosticLoggingEnabled(enabled: Boolean) = edit {
         it[keyDiagnosticLoggingEnabled] = enabled
+    }
+
+    suspend fun setAutomaticSensorHandoffEnabled(enabled: Boolean) = edit {
+        it[keyAutomaticSensorHandoffEnabled] = enabled
     }
 
     suspend fun setSelectedWearNode(nodeId: String, displayName: String) = edit {

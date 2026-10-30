@@ -156,6 +156,7 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                     mgDl != null -> settings.unit.format(mgDl)
                     hasSensorAttention -> sensorAttentionPresentation(attention)?.title ?: stringResource(R.string.sensor_error)
                     isWarmingUp -> stringResource(R.string.sensor_warming_up)
+                    liveUnavailable -> "NA"
                     outOfRange -> stringResource(R.string.standby_no_reading)
                     else -> stringResource(R.string.standby_no_reading)
                 }

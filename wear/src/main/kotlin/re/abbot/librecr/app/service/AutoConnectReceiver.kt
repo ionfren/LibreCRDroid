@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
 
 /**
  * Restores the foreground connection service after events that commonly break
@@ -27,6 +28,7 @@ class AutoConnectReceiver : BroadcastReceiver() {
                 LibreComplicationUpdater.requestAll(context)
                 val session = LibreCR.store.loadSession()
                 val autoConnect = LibreCR.store.autoConnectEnabled()
+                if (session != null) ReceiverRecoveryService.ensure(context, AutomaticSensorHandoff.monitoringRequired)
                 if (session == null || !autoConnect) {
                     BleLog.log("receiver: auto-connect skipped action=$action session=${session != null} enabled=$autoConnect")
                     return@launch

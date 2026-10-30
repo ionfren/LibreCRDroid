@@ -41,8 +41,15 @@ object GlucoseComplicationRenderer {
     fun deltaText(reading: SensorStateStore.LastGlucose?, unit: GlucoseUnit = GlucoseUnit.MG_DL): String =
         formatDelta(reading?.deltaMgDlPerMin, unit)
 
-    fun valueText(reading: SensorStateStore.LastGlucose?, unit: GlucoseUnit = GlucoseUnit.MG_DL): String =
-        if (isFresh(reading)) reading?.mgDL?.let { unit.format(it) } ?: "--" else "--"
+    fun valueText(
+        reading: SensorStateStore.LastGlucose?,
+        unit: GlucoseUnit = GlucoseUnit.MG_DL,
+        valueUnavailable: Boolean = false,
+    ): String = when {
+        valueUnavailable -> "NA"
+        isFresh(reading) -> reading?.mgDL?.let { unit.format(it) } ?: "--"
+        else -> "--"
+    }
 
     fun buildAgeDeltaBitmap(
         context: Context,
@@ -98,6 +105,7 @@ object GlucoseComplicationRenderer {
         attention: Libre3SensorAttention = Libre3SensorAttention.None,
         sensorError: Boolean = false,
         unavailable: Boolean = false,
+        valueUnavailable: Boolean = false,
     ): Bitmap {
         val fresh = isFresh(reading)
         val badge = attentionBadge(attention)
@@ -118,7 +126,7 @@ object GlucoseComplicationRenderer {
         paint.strokeWidth = 0f
         val centerText = when {
             sensorError -> "S.E."
-            unavailable -> "--"
+            unavailable -> valueText(null, settings.unit, valueUnavailable)
             !fresh && badge != null -> badge.shortText
             else -> valueText(reading, settings.unit)
         }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.rounded.ShowChart
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.BubbleChart
 import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Sensors
 import androidx.compose.material.icons.rounded.Straighten
@@ -39,6 +40,8 @@ fun SettingsScreen(onNavigate: (String) -> Unit, modifier: Modifier = Modifier) 
         SettingsEntry(Routes.SENSOR, R.string.title_sensor, R.string.set_sensor_s, Icons.Rounded.Sensors),
         SettingsEntry(Routes.ALARMS, R.string.title_alarms, R.string.set_alarms_s, Icons.Rounded.Notifications),
         SettingsEntry(Routes.LIVE_UPDATES, R.string.title_live_updates, R.string.set_live_updates_s, Icons.Rounded.Update),
+        SettingsEntry(Routes.ANDROID_AUTO, R.string.title_android_auto, R.string.set_android_auto_s, Icons.Rounded.DirectionsCar),
+        SettingsEntry(Routes.BMW_IDRIVE, R.string.idrive_title, R.string.idrive_settings_subtitle, Icons.Rounded.DirectionsCar),
         SettingsEntry(Routes.CLOUD, R.string.title_cloud, R.string.set_cloud_s, Icons.Rounded.CloudUpload),
         SettingsEntry(Routes.FLOATING, R.string.title_floating, R.string.set_floating_s, Icons.Rounded.BubbleChart),
         SettingsEntry(Routes.AOD, R.string.title_aod, R.string.set_aod_s, Icons.Rounded.Bedtime),

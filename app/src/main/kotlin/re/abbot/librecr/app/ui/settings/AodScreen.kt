@@ -124,12 +124,29 @@ fun AodScreen(modifier: Modifier = Modifier) {
             SettingsSwitchRow("Grafic", settings.showChart) { edit { putBoolean(AodSettings.KEY_SHOW_CHART, it) } }
             SettingsSwitchRow("Săgeată", settings.showArrow) { edit { putBoolean(AodSettings.KEY_SHOW_ARROW, it) } }
             SettingsSwitchRow("Valoare secundară", settings.showSecondary) { edit { putBoolean(AodSettings.KEY_SHOW_SECONDARY, it) } }
+            SettingsSwitchRow("Durata senzorului (ultimele 24h în roșu)", settings.showSensorLife) { edit { putBoolean(AodSettings.KEY_SHOW_SENSOR_LIFE, it) } }
         }
 
         SectionCard("Aspect") {
+            SettingsSwitchRow("Fundal ca widget-ul (aprinde mai mulți pixeli)", settings.widgetSurface) { edit { putBoolean(AodSettings.KEY_WIDGET_SURFACE, it) } }
             SettingsSlider("Opacitate: ${(settings.opacity * 100).toInt()}%", settings.opacity, 0.35f..1f) { edit { putFloat(AodSettings.KEY_OPACITY, it) } }
+            SettingsSwitchRow("Dimensiune fixă (lățime și înălțime)", settings.fixedSize) { edit { putBoolean(AodSettings.KEY_FIXED_SIZE, it) } }
+            if (settings.fixedSize) {
+                SettingsSlider("Lățime: ${(settings.widthFraction * 100).toInt()}% din ecran", settings.widthFraction, 0.3f..1f) { edit { putFloat(AodSettings.KEY_WIDTH_FRACTION, it) } }
+                SettingsSlider("Înălțime: ${(settings.heightFraction * 100).toInt()}% din ecran", settings.heightFraction, 0.1f..0.6f) { edit { putFloat(AodSettings.KEY_HEIGHT_FRACTION, it) } }
+                Text(
+                    "Graficul umple spațiul rămas (lângă sau sub valoare) și dispare dacă nu mai încape; textul se micșorează doar când nu încape la scalarea aleasă.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             SettingsSlider("Scalare text: ${(settings.textScale * 100).toInt()}%", settings.textScale, 0.5f..6f) { edit { putFloat(AodSettings.KEY_TEXT_SCALE, it) } }
-            SettingsSlider("Scalare grafic: ${(settings.chartScale * 100).toInt()}%", settings.chartScale, 0.5f..2f) { edit { putFloat(AodSettings.KEY_CHART_SCALE, it) } }
+            SettingsSlider(
+                if (settings.fixedSize) "Scalare grafic: automată (umple cardul)" else "Scalare grafic: ${(settings.chartScale * 100).toInt()}%",
+                settings.chartScale,
+                0.5f..2f,
+                enabled = !settings.fixedSize,
+            ) { edit { putFloat(AodSettings.KEY_CHART_SCALE, it) } }
             SettingsSlider("Poziție verticală: ${(settings.verticalPosition * 100).toInt()}%", settings.verticalPosition, 0f..1f) { edit { putFloat(AodSettings.KEY_VERTICAL_POSITION, it) } }
             SettingsSlider("Dimensiune săgeată: ${(settings.arrowScale * 100).toInt()}%", settings.arrowScale, 0.5f..2f) { edit { putFloat(AodSettings.KEY_ARROW_SCALE, it) } }
             SettingsSlider("Offset săgeată: ${settings.arrowVerticalOffsetDp.toInt()}dp", settings.arrowVerticalOffsetDp, -20f..20f) { edit { putFloat(AodSettings.KEY_ARROW_VERTICAL_OFFSET, it) } }

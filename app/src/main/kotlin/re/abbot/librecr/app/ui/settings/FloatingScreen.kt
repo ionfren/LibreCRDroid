@@ -94,13 +94,17 @@ fun FloatingScreen(modifier: Modifier = Modifier) {
             SettingsSwitchRow("Săgeată trend", settings.showArrow) { edit { putBoolean(FloatingSettings.KEY_SHOW_ARROW, it) } }
             SettingsSwitchRow("Mod dynamic island", settings.dynamicIsland) { edit { putBoolean(FloatingSettings.KEY_DYNAMIC_ISLAND, it) } }
             SettingsSwitchRow("Contur subtil", settings.subtleOutline) { edit { putBoolean(FloatingSettings.KEY_SUBTLE_OUTLINE, it) } }
+            SettingsSwitchRow("Culori glucoză", settings.glucoseRangeColors) { edit { putBoolean(FloatingSettings.KEY_GLUCOSE_RANGE_COLORS, it) } }
             SettingsSlider("Dimensiune font: ${settings.fontSizeSp.toInt()}sp", settings.fontSizeSp, 12f..48f) { edit { putFloat(FloatingSettings.KEY_FONT_SIZE, it) } }
             SettingsSlider("Colțuri: ${settings.cornerRadiusDp.toInt()}dp", settings.cornerRadiusDp, 0f..64f) { edit { putFloat(FloatingSettings.KEY_CORNER_RADIUS, it) } }
             SettingsSlider("Opacitate: ${(settings.opacity * 100).toInt()}%", settings.opacity, 0.1f..1f) { edit { putFloat(FloatingSettings.KEY_OPACITY, it) } }
-            SettingsSlider("X: ${settings.x}px", settings.x.toFloat(), 0f..1200f) { edit { putInt(FloatingSettings.KEY_X, it.roundToInt()) } }
-            SettingsSlider("Y: ${settings.y}px", settings.y.toFloat(), 0f..2400f) { edit { putInt(FloatingSettings.KEY_Y, it.roundToInt()) } }
-            SettingsSlider("Island offset: ${settings.islandVerticalOffsetDp.toInt()}dp", settings.islandVerticalOffsetDp, 0f..96f) { edit { putFloat(FloatingSettings.KEY_ISLAND_VERTICAL_OFFSET, it) } }
-            SettingsSlider("Island gap: ${settings.islandGapDp.toInt()}dp", settings.islandGapDp, 0f..220f) { edit { putFloat(FloatingSettings.KEY_ISLAND_GAP, it) } }
+            SettingsSlider("X: ${settings.x}px", settings.x.toFloat(), 0f..1200f, enabled = !settings.dynamicIsland) { edit { putInt(FloatingSettings.KEY_X, it.roundToInt()) } }
+            SettingsSlider("Y: ${settings.y}px", settings.y.toFloat(), 0f..2400f, enabled = !settings.dynamicIsland) { edit { putInt(FloatingSettings.KEY_Y, it.roundToInt()) } }
+            SettingsSlider("Island offset: ${settings.islandVerticalOffsetDp.toInt()}dp", settings.islandVerticalOffsetDp, 0f..96f, enabled = settings.dynamicIsland) { edit { putFloat(FloatingSettings.KEY_ISLAND_VERTICAL_OFFSET, it) } }
+            SettingsSlider("Island gap: ${settings.islandGapDp.toInt()}dp", settings.islandGapDp, 0f..220f, enabled = settings.dynamicIsland) { edit { putFloat(FloatingSettings.KEY_ISLAND_GAP, it) } }
+            SettingsSlider("Lățime island: ${autoDp(settings.islandWidthDp)}", settings.islandWidthDp, 0f..420f, enabled = settings.dynamicIsland) { edit { putFloat(FloatingSettings.KEY_ISLAND_WIDTH, it) } }
+            SettingsSlider("Înălțime island: ${autoDp(settings.islandHeightDp)}", settings.islandHeightDp, 0f..96f, enabled = settings.dynamicIsland) { edit { putFloat(FloatingSettings.KEY_ISLAND_HEIGHT, it) } }
+            SettingsSlider("Poziție delta: ${signedDp(settings.deltaOffsetDp)}", settings.deltaOffsetDp, -80f..80f) { edit { putFloat(FloatingSettings.KEY_DELTA_OFFSET, it) } }
             Text("Font", fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FontChip("Thin", settings.fontStyle == FONT_THIN) { edit { putString(FloatingSettings.KEY_FONT_STYLE, FONT_THIN) } }
@@ -110,6 +114,11 @@ fun FloatingScreen(modifier: Modifier = Modifier) {
         }
     }
 }
+
+private fun signedDp(value: Float): String = "%+ddp".format(value.roundToInt())
+
+/** 0 means "follow the text" for the island size sliders. */
+private fun autoDp(value: Float): String = if (value <= 0f) "auto" else "${value.toInt()}dp"
 
 @Composable
 internal fun FontChip(label: String, selected: Boolean, onClick: () -> Unit) {

@@ -42,4 +42,9 @@ class GlucoseComplicationFreshnessTest {
     fun `missing reading is unavailable rather than sensor error`() {
         assertEquals("--", GlucoseComplicationRenderer.valueText(null))
     }
+
+    @Test
+    fun `a sensor packet with no usable glucose is rendered as NA`() {
+        assertEquals("NA", GlucoseComplicationRenderer.valueText(null, valueUnavailable = true))
+    }
 }

@@ -45,6 +45,8 @@ import re.abbot.librecr.app.ui.settings.CloudUploadScreen
 import re.abbot.librecr.app.ui.settings.FloatingScreen
 import re.abbot.librecr.app.ui.settings.LanguageScreen
 import re.abbot.librecr.app.ui.settings.LiveUpdatesScreen
+import re.abbot.librecr.app.ui.settings.AndroidAutoScreen
+import re.abbot.librecr.app.ui.settings.BmwIDriveScreen
 import re.abbot.librecr.app.ui.settings.LogScreen
 import re.abbot.librecr.app.ui.settings.SettingsScreen
 import re.abbot.librecr.app.ui.settings.UnitsScreen
@@ -104,6 +106,8 @@ fun LibreCRApp(
                         composable(Routes.SENSOR) { SensorScreen(nfcReader) }
                         composable(Routes.ALARMS) { AlarmsScreen() }
                         composable(Routes.LIVE_UPDATES) { LiveUpdatesScreen() }
+                        composable(Routes.ANDROID_AUTO) { AndroidAutoScreen() }
+                        composable(Routes.BMW_IDRIVE) { BmwIDriveScreen() }
                         composable(Routes.CLOUD) { CloudUploadScreen() }
                         composable(Routes.FLOATING) { FloatingScreen() }
                         composable(Routes.AOD) { AodScreen() }
@@ -147,6 +151,8 @@ private fun routeTitle(route: String?): String = stringResource(
         Routes.SENSOR -> R.string.title_sensor
         Routes.ALARMS -> R.string.title_alarms
         Routes.LIVE_UPDATES -> R.string.title_live_updates
+        Routes.ANDROID_AUTO -> R.string.title_android_auto
+        Routes.BMW_IDRIVE -> R.string.idrive_title
         Routes.CLOUD -> R.string.title_cloud
         Routes.FLOATING -> R.string.title_floating
         Routes.AOD -> R.string.title_aod

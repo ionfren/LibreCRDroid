@@ -34,10 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.LibreCR
+import re.abbot.librecr.app.R
 import re.abbot.librecr.app.data.ImportedSession
 import re.abbot.librecr.app.libreview.LibreViewAccountClient
 import re.abbot.librecr.app.nfc.AndroidLibre3NfcReader
@@ -46,7 +48,9 @@ import re.abbot.librecr.app.ui.common.InfoRow
 import re.abbot.librecr.app.ui.common.LocalAppSettings
 import re.abbot.librecr.app.ui.common.MessageBox
 import re.abbot.librecr.app.ui.common.SectionCard
+import re.abbot.librecr.app.ui.common.SettingsSwitchRow
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
 import re.abbot.librecr.protocol.pairing.Libre3NfcPatchInfo
 import re.abbot.librecr.protocol.pairing.Libre3NfcScanMode
 import re.abbot.librecr.protocol.pairing.Libre3NfcScanResult
@@ -89,10 +93,11 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
     fun startService(allowCandidateFirstPair: Boolean = false) {
         permLauncher.launch(requiredPermissions())
         scope.launch {
+            AutomaticSensorHandoff.cancel()
             LibreCR.store.setAutoConnectEnabled(true)
             LibreCR.store.setWatchTakeoverEnabled(false)
+            SensorForegroundService.start(ctx, allowCandidateFirstPair)
         }
-        SensorForegroundService.start(ctx, allowCandidateFirstPair)
     }
 
     fun saveActivation(
@@ -118,6 +123,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
             sensorFirmwareVersion = result.patchInfo.firmwareVersion,
         )
         scope.launch {
+            AutomaticSensorHandoff.cancel()
             if (replaceExistingSession) {
                 SensorForegroundService.stop(ctx)
                 LibreCR.manager.stop()
@@ -134,6 +140,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
                 startOnWatchAfterScan -> {
                     WearDataSync.sendSession(ctx, session, startOnWatch = true)
                     LibreCR.store.setWatchTakeoverEnabled(true)
+                    AutomaticSensorHandoff.watchHandoffStarted()
                     nfcMessage += "; date trimise către ceas pentru conectarea la Libre 3."
                 }
                 connectOnPhoneAfterScan -> {
@@ -205,6 +212,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
                 } else if (scan.activationError != null) {
                     restoreWatchSessionOnFailure?.let {
                         WearDataSync.sendSession(ctx, it, startOnWatch = true)
+                        LibreCR.appScope.launch { AutomaticSensorHandoff.watchHandoffStarted() }
                     }
                     nfcMessage = null
                     nfcError = "NFC error=0x${"%02x".format(requireNotNull(scan.activationError).errorCode)}"
@@ -214,6 +222,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
             }.onFailure {
                 restoreWatchSessionOnFailure?.let { previous ->
                     WearDataSync.sendSession(ctx, previous, startOnWatch = true)
+                    LibreCR.appScope.launch { AutomaticSensorHandoff.watchHandoffStarted() }
                 }
                 nfcMessage = null
                 nfcError = it.message ?: it.toString()
@@ -224,6 +233,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
     fun connectNewSensor() {
         val previousSession = savedSession
         scope.launch {
+            AutomaticSensorHandoff.cancel()
             nfcError = null
             nfcMessage = "Pregătesc conectarea la un senzor Libre 3 nou..."
             if (!refreshReceiverIdFromLibreViewIfConfigured()) return@launch
@@ -275,6 +285,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
         // screen. Commit the takeover intent up front so the switch flips on immediately and stays on
         // (it is driven by the persisted watchTakeoverFlow); revert only if the phone fails to release.
         LibreCR.appScope.launch {
+            AutomaticSensorHandoff.cancel()
             LibreCR.store.setWatchTakeoverEnabled(true)
             wearBusy = true
             wearError = null
@@ -300,6 +311,7 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
             // devices share the same receiver certificate, so the sensor sees the same identity.
             val handoffKey = runCatching { LibreCR.store.loadCachedPhase5RawKey() }.getOrNull()
             WearDataSync.sendSession(appCtx, session.copy(phase5RawKey = handoffKey), startOnWatch = true)
+            AutomaticSensorHandoff.watchHandoffStarted()
             wearMessage = "Ceasul preia conexiunea la Libre 3. Poți închide acest ecran."
             wearBusy = false
         }
@@ -307,30 +319,16 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
 
     fun returnToPhone() {
         if (savedSession == null || wearBusy) return
-        scope.launch {
+        permLauncher.launch(requiredPermissions())
+        LibreCR.appScope.launch {
             wearBusy = true
             wearError = null
-            wearMessage = "Cer ceasului să oprească senzorul Libre 3..."
-            val stopAck = WearDataSync.requestStopStatusAndWait(ctx)
-            if (!stopAck.received) {
-                wearBusy = false
-                LibreCR.store.setWatchTakeoverEnabled(true)
-                wearMessage = null
-                wearError = "Ceasul nu a confirmat oprirea; telefonul nu pornește ca să evite conflictul BLE."
-                return@launch
-            }
-            wearMessage = if (stopAck.wasActive) {
-                "Ceasul a cedat conexiunea. Telefonul pornește BLE."
-            } else {
-                "Ceasul nu era conectat. Telefonul pornește BLE."
-            }
-            wearMessage = "Aștept eliberarea conexiunii BLE a senzorului Libre 3..."
-            delay(HANDOFF_BLE_RELEASE_DELAY_MS)
-            LibreCR.store.clearCachedPhase5RawKey()
-            LibreCR.store.setAutoConnectEnabled(true)
-            wearMessage = "Telefonul pornește BLE cu handshake complet."
-            startService(allowCandidateFirstPair = true)
-            wearBusy = false
+            wearMessage = "Telefonul verifică ceasul și încearcă preluarea senzorului..."
+            try {
+                val started = AutomaticSensorHandoff.takePhoneManually()
+                wearMessage = if (started) "Telefonul încearcă conectarea la senzor. Confirmarea vine odată cu primele date." else null
+                if (!started) wearError = "Preluarea nu a pornit. Verifică permisiunile Bluetooth și conexiunea disponibilă."
+            } finally { wearBusy = false }
         }
     }
 
@@ -377,6 +375,16 @@ fun SensorScreen(nfcReader: AndroidLibre3NfcReader, modifier: Modifier = Modifie
             error = wearError,
             onToggle = ::setWatchTakeover,
         )
+
+        SectionCard(stringResource(R.string.automatic_handoff_title)) {
+            SettingsSwitchRow(
+                stringResource(R.string.automatic_handoff_enabled),
+                appSettings.automaticSensorHandoffEnabled,
+            ) { enabled ->
+                scope.launch { LibreCR.settings.setAutomaticSensorHandoffEnabled(enabled) }
+            }
+            Text(stringResource(R.string.automatic_handoff_description))
+        }
 
         SavedSensorCard(savedSession, patchInfo)
     }

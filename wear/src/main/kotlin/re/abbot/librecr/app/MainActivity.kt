@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
@@ -29,6 +30,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -42,6 +46,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.data.GlucoseUnit
@@ -49,6 +58,7 @@ import re.abbot.librecr.app.data.WearAppearanceSettings
 import re.abbot.librecr.app.data.WearDisplayFontWeight
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.live.WearLiveUpdatesNotifier
 import re.abbot.librecr.app.log.GlucoseLatencyTracer
 import re.abbot.librecr.app.ble.ConnectionState
 import re.abbot.librecr.app.ble.isActiveGlucoseUnavailable
@@ -109,6 +119,9 @@ private fun WearTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun WearScreen() {
+    val context = LocalContext.current
+    val liveUpdatesEnabled by WearLiveUpdatesNotifier.enabled.collectAsState()
+    var showLiveOptions by remember { mutableStateOf(false) }
     // Live in-memory reading drives the UI so decode→ui is instant; the persisted DataStore value
     // is only the cold-start fallback (before the service has produced a reading this session).
     val live by LibreCR.manager.glucose.collectAsState()
@@ -121,7 +134,7 @@ private fun WearScreen() {
     val sensorStatus = liveSensorStatus ?: persistedSensorStatus
     val attention = sensorStatus?.attention ?: Libre3SensorAttention.None
     val liveUnavailable = live.isActiveGlucoseUnavailable()
-    val baseReading = live?.toLastGlucose() ?: persisted
+    val baseReading = if (live != null) live?.toLastGlucose() else persisted
     val warmingUp = liveUnavailable &&
         live?.lifeCount?.let {
             it < (session?.warmupMinutes ?: SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES)
@@ -129,14 +142,15 @@ private fun WearScreen() {
     val displayStatus = when {
         attention != Libre3SensorAttention.None -> WearGlucoseDisplayStatus.SENSOR_ERROR
         warmingUp -> WearGlucoseDisplayStatus.SENSOR_WARMUP
-        liveUnavailable ||
-            (!isFresh(baseReading) && connectionState.isUnavailableForDisplay()) ->
+        liveUnavailable -> WearGlucoseDisplayStatus.VALUE_UNAVAILABLE
+        !isFresh(baseReading) && connectionState.isUnavailableForDisplay() ->
             WearGlucoseDisplayStatus.OUT_OF_RANGE
         else -> WearGlucoseDisplayStatus.NORMAL
     }
     val statusAtMs = when (displayStatus) {
         WearGlucoseDisplayStatus.SENSOR_ERROR -> sensorStatus?.observedAtMs ?: live?.receivedAtMs
         WearGlucoseDisplayStatus.SENSOR_WARMUP,
+        WearGlucoseDisplayStatus.VALUE_UNAVAILABLE,
         WearGlucoseDisplayStatus.OUT_OF_RANGE -> live?.receivedAtMs ?: baseReading?.receivedAtMs
         WearGlucoseDisplayStatus.NORMAL -> null
     }
@@ -145,7 +159,7 @@ private fun WearScreen() {
     var burnInFrameIndex by remember { mutableStateOf(0) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { }
+    ) { WearLiveUpdatesNotifier.refresh(context) }
 
     // End of the interactive in-memory path: Compose now holds the new value and is about to
     // recompose. This deliberately does not wait for STORE_UPDATED and can be logged before it.
@@ -166,7 +180,9 @@ private fun WearScreen() {
     val burnInFrame = WEAR_BURN_IN_FRAMES[burnInFrameIndex]
 
     Surface(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().clickable(
+            onClickLabel = stringResource(R.string.wear_live_options),
+        ) { showLiveOptions = true },
         color = MaterialTheme.colorScheme.background,
     ) {
         Column(
@@ -180,6 +196,34 @@ private fun WearScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             WearReadingLayout(reading, appearance, displayStatus, statusAtMs)
+        }
+    }
+    if (showLiveOptions) {
+        Dialog(
+            onDismissRequest = { showLiveOptions = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 30.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.wear_live_options), fontSize = 18.sp)
+                    Text(stringResource(R.string.wear_live_description), fontSize = 12.sp, textAlign = TextAlign.Center)
+                    TextButton(onClick = {
+                        WearLiveUpdatesNotifier.setEnabled(context, !liveUpdatesEnabled)
+                        showLiveOptions = false
+                    }) {
+                        Text(stringResource(if (liveUpdatesEnabled) R.string.wear_live_unpin else R.string.wear_live_pin),
+                            textAlign = TextAlign.Center, fontSize = 14.sp)
+                    }
+                    TextButton(onClick = { showLiveOptions = false }) {
+                        Text(stringResource(R.string.wear_live_close), fontSize = 14.sp)
+                    }
+                }
+            }
         }
     }
 }
@@ -220,6 +264,7 @@ private fun WearReadingLayout(
             text = when {
                 displayStatus == WearGlucoseDisplayStatus.SENSOR_ERROR -> "S.E."
                 displayStatus == WearGlucoseDisplayStatus.SENSOR_WARMUP -> "--"
+                displayStatus == WearGlucoseDisplayStatus.VALUE_UNAVAILABLE -> "NA"
                 displayStatus == WearGlucoseDisplayStatus.OUT_OF_RANGE -> "--"
                 mgDl != null -> appearance.unit.format(mgDl)
                 else -> "--"
@@ -231,6 +276,7 @@ private fun WearReadingLayout(
             color = when (displayStatus) {
                 WearGlucoseDisplayStatus.SENSOR_ERROR -> WearSensorErrorColor
                 WearGlucoseDisplayStatus.SENSOR_WARMUP,
+                WearGlucoseDisplayStatus.VALUE_UNAVAILABLE,
                 WearGlucoseDisplayStatus.OUT_OF_RANGE -> composeColor(appearance.timestampStaleColor)
                 WearGlucoseDisplayStatus.NORMAL -> composeColor(appearance.glucoseColorFor(mgDl))
             },
@@ -271,7 +317,7 @@ private fun WearReadingLayout(
 /** Red accent for the live sensor-error state (matches the complications' error badge color). */
 private val WearSensorErrorColor = Color(0xFFE53935)
 
-private enum class WearGlucoseDisplayStatus { NORMAL, SENSOR_WARMUP, OUT_OF_RANGE, SENSOR_ERROR }
+private enum class WearGlucoseDisplayStatus { NORMAL, SENSOR_WARMUP, VALUE_UNAVAILABLE, OUT_OF_RANGE, SENSOR_ERROR }
 
 private fun requiredPermissions(): Array<String> {
     val permissions = mutableListOf<String>()

@@ -14,10 +14,12 @@ abstract class TrackedComplicationDataSourceService : SuspendingComplicationData
 
     final override fun onComplicationActivated(complicationInstanceId: Int, type: ComplicationType) {
         super.onComplicationActivated(complicationInstanceId, type)
+        LibreComplicationUpdater.onConfigurationChanged()
         ActiveComplicationRegistry.register(complicationInstanceId, ComponentName(this, javaClass))
     }
 
     final override fun onComplicationDeactivated(complicationInstanceId: Int) {
+        LibreComplicationUpdater.onConfigurationChanged()
         ActiveComplicationRegistry.unregister(complicationInstanceId)
         super.onComplicationDeactivated(complicationInstanceId)
     }
@@ -25,8 +27,14 @@ abstract class TrackedComplicationDataSourceService : SuspendingComplicationData
     final override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData {
         // Activation is not re-delivered after a process restart; the host's own request is the
         // reliable re-registration point.
-        ActiveComplicationRegistry.register(request.complicationInstanceId, ComponentName(this, javaClass))
-        return onTrackedComplicationRequest(request)
+        val component = ComponentName(this, javaClass)
+        // A host request is also the reactivation signal if an activation callback was missed.
+        LibreComplicationUpdater.onConfigurationChanged()
+        ActiveComplicationRegistry.register(request.complicationInstanceId, component)
+        val token = LibreComplicationUpdater.onRequestStarted(component, request.complicationInstanceId)
+        val data = onTrackedComplicationRequest(request)
+        LibreComplicationUpdater.onDataReady(token, component, request.complicationInstanceId)
+        return data
     }
 
     /** Same contract as [onComplicationRequest], invoked after instance registration. */

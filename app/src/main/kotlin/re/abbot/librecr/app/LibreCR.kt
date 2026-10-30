@@ -4,13 +4,11 @@ import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import re.abbot.librecr.app.alarm.GlucoseAlarmManager
@@ -24,6 +22,10 @@ import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.stats.GlucoseSample
 import re.abbot.librecr.app.ui.standby.StandbyController
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
+import re.abbot.librecr.app.wear.ReceiverSessionBackup
+import re.abbot.librecr.app.widget.GlucoseWidgetUpdater
+import re.abbot.librecr.app.auto.AndroidAutoGlucoseNotifications
 
 /**
  * Minimal process-wide graph so the foreground service (which owns the
@@ -54,6 +56,17 @@ object LibreCR {
         manager = SensorConnectionManager(app, store)
         settings = SettingsStore(app)
         uploader = LibreViewUploader(app, settings, store)
+        AutomaticSensorHandoff.initialize(app)
+        ReceiverSessionBackup.initialize(app)
+        appScope.launch {
+            settings.settingsFlow
+                .map { it.automaticSensorHandoffEnabled to it.selectedWearNodeId }
+                .distinctUntilChanged()
+                .collect { (enabled, selectedNodeId) ->
+                    WearDataSync.sendAutomaticHandoffSettings(app, enabled, selectedNodeId)
+                    AutomaticSensorHandoff.onSettingsChanged(enabled)
+                }
+        }
         appScope.launch {
             settings.settingsFlow
                 .map { it.diagnosticLoggingEnabled }
@@ -92,15 +105,20 @@ object LibreCR {
             // Pair the persisted reading with the live unavailable timestamp. Patch-status attention
             // remains the separate source of truth for real sensor errors.
             val glucoseWithUnavailable = combine(manager.glucose, store.lastGlucoseFlow) { live, persisted ->
-                persisted to live?.takeIf { !it.usable }?.receivedAtMs
+                val reading = if (live != null) {
+                    live.mgDL?.takeIf { live.usable }?.let { mg ->
+                        SensorStateStore.LastGlucose(live.lifeCount, mg, live.trend, live.receivedAtMs,
+                            live.deltaMgDlPerMin, live.chartMgDL)
+                    }
+                } else persisted
+                reading to live?.takeIf { !it.usable || it.mgDL == null }?.receivedAtMs
             }
             combine(
                 settings.settingsFlow,
                 glucoseWithUnavailable,
                 store.sensorLifecycleFlow,
                 store.sessionFlow,
-                liveUpdateTicker(),
-            ) { appSettings, (reading, unavailableAtMs), lifecycle, session, _ ->
+            ) { appSettings, (reading, unavailableAtMs), lifecycle, session ->
                 LiveUpdatesNotifier.State(
                     appSettings.liveUpdates,
                     appSettings.unit,
@@ -152,13 +170,8 @@ object LibreCR {
                 }
         }
         initialized = true
-    }
-
-    private fun liveUpdateTicker() = flow {
-        while (true) {
-            emit(Unit)
-            delay(30_000L)
-        }
+        GlucoseWidgetUpdater.start(app)
+        AndroidAutoGlucoseNotifications.start(app)
     }
 
     /**

@@ -2,7 +2,12 @@
 <resources>
     <string name="complication_age_delta">Temps + delta/min</string>
     <string name="complication_trend_above_value">Tendance au-dessus de la valeur</string>
+    <string name="complication_date">Date</string>
+    <string name="complication_watch_battery">Batterie</string>
     <string name="sensor_error">Erreur capteur</string>
     <string name="sensor_unavailable">Aucune mesure</string>
     <string name="sensor_warming_up">Préchauffage du capteur</string>
+    <string name="recovery_channel">Récupération de la connexion</string>
+    <string name="recovery_title">Le téléphone collecte les données</string>
+    <string name="recovery_monitoring">La montre peut se reconnecter si le téléphone ne répond plus.</string>
 </resources>

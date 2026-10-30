@@ -49,8 +49,13 @@ class StandbyActivity : ComponentActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setBackgroundDrawableResource(android.R.color.black)
         window.decorView.setBackgroundColor(AndroidColor.BLACK)
+        // Force-dark on this device can invert explicitly drawn blacks (see the AOD/floating
+        // overlay fix); the OLED background must stay true black, so opt the whole window out.
+        window.decorView.isForceDarkAllowed = false
         window.statusBarColor = AndroidColor.BLACK
         window.navigationBarColor = AndroidColor.BLACK
+        window.isStatusBarContrastEnforced = false
+        window.isNavigationBarContrastEnforced = false
         WindowCompat.setDecorFitsSystemWindows(window, false)
         hideSystemBars()
         StandbyController.markVisible(true)

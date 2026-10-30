@@ -59,7 +59,7 @@ class SensorConnection(
      * Connect, discover services, and enable only the security-handshake
      * notifications. Data-plane notifications are enabled once after Phase 6.
      */
-    suspend fun connectAndDiscover(connectTimeoutMs: Long, discoverTimeoutMs: Long, autoConnect: Boolean = false) {
+    suspend fun connectAndDiscover(connectTimeoutMs: Long?, discoverTimeoutMs: Long, autoConnect: Boolean = false) {
         connect(connectTimeoutMs, autoConnect)
         // No connection-priority requests for Libre 3: HIGH/BALANCED caused random status=8 drops and
         // LOW_POWER made the handshake too slow. Use the default Android/sensor-negotiated parameters.
@@ -67,7 +67,7 @@ class SensorConnection(
         subscribeNotifyCharacteristics(LibreSensorGatt.handshakeNotifying, "handshake")
     }
 
-    private suspend fun connect(timeoutMs: Long, autoConnect: Boolean) = opMutex.withLock {
+    private suspend fun connect(timeoutMs: Long?, autoConnect: Boolean) = opMutex.withLock {
         val def = CompletableDeferred<Unit>()
         pendingConnect = def
         closed = false
@@ -82,7 +82,7 @@ class SensorConnection(
         }
         gatt = newGatt
         try {
-            withTimeout(timeoutMs) { def.await() }
+            if (timeoutMs == null) def.await() else withTimeout(timeoutMs) { def.await() }
         } catch (e: TimeoutCancellationException) {
             BleLog.log("gatt.connect timed out after ${timeoutMs}ms")
             close()

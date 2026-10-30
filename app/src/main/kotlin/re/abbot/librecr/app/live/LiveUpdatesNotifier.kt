@@ -24,6 +24,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.graphics.drawable.IconCompat
 import re.abbot.librecr.app.MainActivity
 import re.abbot.librecr.app.R
+import re.abbot.librecr.app.GLUCOSE_STALE_AFTER_MS
 import re.abbot.librecr.app.isFreshGlucose
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.ImportedSession
@@ -60,16 +61,15 @@ object LiveUpdatesNotifier {
     ) {
         val app = context.applicationContext
         val settings = state.settings
-        // A fresh unavailable live reading is the newest glucose state. Suppress the previous value
-        // without inventing a sensor error; real errors have their own patch-status notification.
+        // A non-numeric packet is still a new observation, with its own timestamp and live card.
         val unavailable = settings.enabled && state.unavailableAtMs?.let { isFreshGlucose(it) } == true
         if (unavailable) {
             ensureChannel(app)
             maybePosted = true
-            notificationManager(app).notify(NOTIFICATION_ID, buildUnavailableNotification(app, state))
+            notificationManager(app).notify(NOTIFICATION_ID, buildNotification(app, state.copy(reading = null)))
             return
         }
-        val reading = state.reading?.takeIf { isFreshGlucose(it.receivedAtMs) }
+        val reading = state.reading?.takeIf { state.unavailableAtMs == null && isFreshGlucose(it.receivedAtMs) }
         if (!settings.enabled || reading == null) {
             if (maybePosted) {
                 maybePosted = false
@@ -84,37 +84,6 @@ object LiveUpdatesNotifier {
             NOTIFICATION_ID,
             buildNotification(app, displayState),
         )
-    }
-
-    private fun buildUnavailableNotification(context: Context, state: State): Notification {
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            120,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val sensorProgress = sensorProgress(state)
-        val sensorLabel = sensorProgress.label(context)
-        val title = if (sensorProgress.isWarmingUp) {
-            context.getString(R.string.sensor_warming_up)
-        } else {
-            context.getString(R.string.standby_no_reading)
-        }
-        val builder = Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle(title)
-            .setSubText(sensorLabel)
-            .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setCategory(Notification.CATEGORY_STATUS)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setLocalOnly(true)
-            .setShowWhen(false)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setContentIntent(contentIntent)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA && state.settings.statusChipEnabled) {
-            builder.setShortCriticalText("--")
-        }
-        return builder.build()
     }
 
     fun canPostPromotedNotifications(context: Context): Boolean? {
@@ -149,7 +118,7 @@ object LiveUpdatesNotifier {
         state: State,
     ): Notification {
         val settings = state.settings
-        val reading = requireNotNull(state.reading)
+        val reading = state.reading
         val sensorProgress = sensorProgress(state)
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -158,6 +127,7 @@ object LiveUpdatesNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val usesMetricStyle = Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+        val observedAtMs = state.unavailableAtMs ?: requireNotNull(reading).receivedAtMs
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(
                 if (usesMetricStyle) null else primaryText(state),
@@ -169,8 +139,10 @@ object LiveUpdatesNotifier {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setLocalOnly(true)
-            .setShowWhen(false)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setWhen(observedAtMs)
+            .setShowWhen(true)
+            .setTimeoutAfter((observedAtMs + GLUCOSE_STALE_AFTER_MS - System.currentTimeMillis()).coerceAtLeast(1L))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setColor(SENSOR_ACTIVE_COLOR)
             .setContentIntent(contentIntent)
 
@@ -189,7 +161,7 @@ object LiveUpdatesNotifier {
             )
         }
 
-        val trendIconRes = trendNotificationIconRes(reading.trend)
+        val trendIconRes = trendNotificationIconRes(reading?.trend)
         val useTrendNotificationIcon = trendIconRes != null &&
             (
                 usesMetricStyle ||
@@ -199,7 +171,7 @@ object LiveUpdatesNotifier {
             builder.setSmallIcon(requireNotNull(trendIconRes))
             if (!usesMetricStyle) {
                 builder.setLargeIcon(
-                    Icon.createWithBitmap(trendBadgeBitmap(context, reading.trend)),
+                    Icon.createWithBitmap(trendBadgeBitmap(context, reading?.trend)),
                 )
             }
         } else {
@@ -220,9 +192,9 @@ object LiveUpdatesNotifier {
         sensorProgress: SensorProgress,
     ) {
         val settings = state.settings
-        val reading = requireNotNull(state.reading)
+        val reading = state.reading
         if (settings.statusChipEnabled) {
-            builder.setShortCriticalText(LiveUpdateFormatter.chipText(reading, state.unit, settings))
+            builder.setShortCriticalText(reading?.let { LiveUpdateFormatter.chipText(it, state.unit, settings) } ?: "NA")
         }
         if (settings.showOnHomeScreen) {
             builder.addExtras(Bundle().apply { putBoolean(REQUEST_PROMOTED_ONGOING_EXTRA, true) })
@@ -262,10 +234,11 @@ object LiveUpdatesNotifier {
         context: Context,
         state: State,
     ): NotificationCompat.MetricStyle {
-        val reading = requireNotNull(state.reading)
-        val glucoseValue: NotificationCompat.Metric.MetricValue = when (state.unit) {
-            GlucoseUnit.MG_DL -> NotificationCompat.Metric.FixedInt(reading.mgDL)
-            GlucoseUnit.MMOL_L -> NotificationCompat.Metric.FixedFloat(
+        val reading = state.reading
+        val glucoseValue: NotificationCompat.Metric.MetricValue = when {
+            reading == null -> NotificationCompat.Metric.FixedText("NA")
+            state.unit == GlucoseUnit.MG_DL -> NotificationCompat.Metric.FixedInt(reading.mgDL)
+            else -> NotificationCompat.Metric.FixedFloat(
                 reading.mgDL / 18f,
                 null,
                 1,
@@ -276,7 +249,7 @@ object LiveUpdatesNotifier {
             .addMetric(
                 NotificationCompat.Metric(
                     glucoseValue,
-                    metricSecondaryText(state).ifBlank {
+                    (if (reading == null) secondaryText(context, state) else metricSecondaryText(state)).ifBlank {
                         context.getString(R.string.title_app)
                     },
                 ),
@@ -294,7 +267,7 @@ object LiveUpdatesNotifier {
             .takeIf {
                 state.settings.statusChipEnabled && state.settings.showTrendInChip
             }
-        val value = state.reading?.let { state.unit.formatWithUnit(it.mgDL) }.orEmpty()
+        val value = state.reading?.let { state.unit.formatWithUnit(it.mgDL) } ?: "NA"
         val text = listOfNotNull(trend, value.takeIf { it.isNotBlank() }).joinToString(" ")
         if (text.isBlank()) return text
 
@@ -313,8 +286,7 @@ object LiveUpdatesNotifier {
     }
 
     private fun metricSecondaryText(state: State): String {
-        val reading = requireNotNull(state.reading)
-        return LiveUpdateFormatter.deltaText(reading, state.unit)
+        return state.reading?.let { LiveUpdateFormatter.deltaText(it, state.unit) }
             ?.let { "$it ${state.unit.label}" }
             .orEmpty()
     }
@@ -322,7 +294,9 @@ object LiveUpdatesNotifier {
     private fun secondaryText(
         context: Context,
         state: State,
-    ): String = listOfNotNull(
+    ): String = if (state.reading == null) {
+        context.getString(if (sensorProgress(state).isWarmingUp) R.string.sensor_warming_up else R.string.standby_no_reading)
+    } else listOfNotNull(
         state.reading
             ?.let { trendLabel(context, it.trend) }
             .takeIf { state.settings.showTrendOnLockScreen },

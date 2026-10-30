@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.content.res.ResourcesCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ import re.abbot.librecr.app.ble.isUnavailableForGlucoseDisplay
 import re.abbot.librecr.app.data.GlucoseUnit
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.ui.theme.DarkGlucoseColors
 import re.abbot.librecr.protocol.dataplane.Libre3SensorAttention
 import re.abbot.librecr.protocol.dataplane.SensorLifecycle
 import kotlin.math.abs
@@ -63,6 +65,8 @@ class FloatingGlucoseOverlayService : Service() {
     private var warmupDurationMinutes = SensorLifecycle.DEFAULT_WARMUP_DURATION_MINUTES
     private var connectionState: ConnectionState = ConnectionState.IDLE
     private var currentUnit: GlucoseUnit = GlucoseUnit.MG_DL
+    private var targetLow = DEFAULT_TARGET_LOW
+    private var targetHigh = DEFAULT_TARGET_HIGH
     private lateinit var prefs: SharedPreferences
 
     private val currentReading: GlucoseUi?
@@ -174,6 +178,7 @@ class FloatingGlucoseOverlayService : Service() {
         val view = FloatingGlucoseView(this, bold, regular).apply {
             setFloatingSettings(settings)
             setGlucoseUnit(currentUnit)
+            setTargetRange(targetLow, targetHigh)
             setReading(currentReading, history.toList(), currentDisplayStatus)
             setOnClickListener { openApp() }
             setDragListener { dx, dy, finished ->
@@ -232,10 +237,11 @@ class FloatingGlucoseOverlayService : Service() {
 
     private fun applyDynamicIslandPosition(lp: WindowManager.LayoutParams) {
         val settings = FloatingSettings.load(this)
-        val screenWidth = resources.displayMetrics.widthPixels
-        val viewWidth = overlayView?.measuredWidth?.takeIf { it > 0 } ?: 260
-        lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = ((screenWidth - viewWidth) / 2f).roundToInt()
+        // CENTER_HORIZONTAL re-centres on every re-measure. Computing x from measuredWidth
+        // instead centred the *previous* width, so the pill drifted off the cutout whenever
+        // the gap or font size changed.
+        lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        lp.x = 0
         lp.y = settings.islandVerticalOffsetDp.dpToPx(this).roundToInt()
     }
 
@@ -288,11 +294,14 @@ class FloatingGlucoseOverlayService : Service() {
         }
         scope.launch {
             LibreCR.settings.settingsFlow
-                .map { it.unit }
+                .map { Triple(it.unit, it.targetLow, it.targetHigh) }
                 .distinctUntilChanged()
-                .collectLatest { unit ->
+                .collectLatest { (unit, low, high) ->
                     currentUnit = unit
+                    targetLow = low
+                    targetHigh = high
                     overlayView?.setGlucoseUnit(unit)
+                    overlayView?.setTargetRange(low, high)
                 }
         }
         scope.launch {
@@ -322,6 +331,8 @@ class FloatingGlucoseOverlayService : Service() {
 
     companion object {
         private const val MAX_HISTORY_POINTS = 48
+        private const val DEFAULT_TARGET_LOW = 70
+        private const val DEFAULT_TARGET_HIGH = 180
         private const val FRESHNESS_REFRESH_MS = 30_000L
 
         fun start(context: Context): Boolean {
@@ -396,6 +407,8 @@ internal open class FloatingGlucoseView(
     private var displayStatus: GlucoseDisplayStatus = GlucoseDisplayStatus.NORMAL
     protected var currentSettings = FloatingSettings.load(context)
     private var glucoseUnit: GlucoseUnit = GlucoseUnit.MG_DL
+    private var targetLow = 70
+    private var targetHigh = 180
     private var downRawX = 0f
     private var downRawY = 0f
     private var pendingClick = false
@@ -410,6 +423,12 @@ internal open class FloatingGlucoseView(
     fun setGlucoseUnit(unit: GlucoseUnit) {
         glucoseUnit = unit
         requestLayout()
+        invalidate()
+    }
+
+    fun setTargetRange(low: Int, high: Int) {
+        targetLow = low
+        targetHigh = high
         invalidate()
     }
 
@@ -431,23 +450,15 @@ internal open class FloatingGlucoseView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         configurePaints()
-        val hasValue = reading?.mgDL != null
-        val primary = primaryText()
-        val secondary = if (hasValue && currentSettings.showSecondary) glucoseUnit.label else ""
-        val delta = if (hasValue) deltaText(history, glucoseUnit, includeSymbol = false).orEmpty() else ""
-        val showArrow = hasValue && currentSettings.showArrow && TrendArrowShape.hasArrow(reading?.trend)
-        val arrowWidth = if (showArrow) arrowSize() else 0f
-        val arrowGap = if (showArrow) dp(1.5f) else 0f
-        val deltaGap = if (delta.isNotEmpty()) dp(2f) else 0f
-        val secondaryGap = if (secondary.isNotEmpty()) dp(3f) else 0f
-        val gap = if (currentSettings.dynamicIsland) {
-            (currentSettings.islandGapDp.takeIf { it > 0f } ?: 70f).dpToPx(context)
-        } else {
-            0f
+        val parts = layoutParts()
+        var width = contentWidth(parts)
+        var height = (currentSettings.fontSizeSp * 1.14f).spToPx(context) + dp(4f)
+        if (isIsland(null)) {
+            // Island size is the cutout's business, not the font's: the explicit dp values win,
+            // and the text measurement only acts as a floor so nothing ever gets clipped.
+            width = width.coerceAtLeast(currentSettings.islandWidthDp.dpToPx(context))
+            height = height.coerceAtLeast(currentSettings.islandHeightDp.dpToPx(context))
         }
-        val width = dp(12f) + valuePaint.measureText(primary) + arrowGap + arrowWidth +
-            deltaGap + secondaryPaint.measureText(delta) + secondaryGap + secondaryPaint.measureText(secondary) + gap
-        val height = (currentSettings.fontSizeSp * 1.14f).spToPx(context) + dp(4f)
         setMeasuredDimension(width.coerceAtLeast(dp(52f)).roundToInt(), height.coerceAtLeast(dp(24f)).roundToInt())
     }
 
@@ -458,34 +469,104 @@ internal open class FloatingGlucoseView(
     }
 
     protected fun drawFloatingContent(canvas: Canvas, bounds: RectF, aod: AodSettings? = null) {
-        val hasValue = reading?.mgDL != null
-        val primary = primaryText()
+        val parts = layoutParts(aod)
         val baseY = bounds.centerY() - (valuePaint.ascent() + valuePaint.descent()) / 2f
-        val leftPadding = dp(6f)
-        val islandGap = if (currentSettings.dynamicIsland && aod == null) {
-            (currentSettings.islandGapDp.takeIf { it > 0f } ?: 70f).dpToPx(context)
+        val tint = valueTint()
+        valuePaint.color = tint
+        secondaryPaint.color = tint.withAlpha(SECONDARY_ALPHA)
+        val leadX: Float
+        val trailX: Float
+        if (isIsland(aod)) {
+            // Both groups hang off the cutout rather than off the pill edges. Anchoring them to
+            // the centre is what keeps the clear gap exactly `islandGapDp` wide and exactly over
+            // the camera: laying out left-to-right instead shifted the gap by (lead - trail) / 2,
+            // which grows with the font size and with the width of the delta.
+            val half = islandGap(aod) / 2f
+            leadX = bounds.centerX() - half - parts.leadWidth()
+            trailX = bounds.centerX() + half + deltaOffset()
+        } else {
+            leadX = bounds.left + dp(6f)
+            trailX = leadX + parts.leadWidth() + deltaOffset() +
+                if (parts.trailWidth() > 0f) dp(2f) else 0f
+        }
+        var x = leadX
+        canvas.drawText(parts.primary, x, baseY, valuePaint)
+        x += valuePaint.measureText(parts.primary)
+        if (parts.arrowSize > 0f) {
+            x += dp(1.5f)
+            val arrowTop = bounds.centerY() - parts.arrowSize / 2f +
+                (aod?.arrowVerticalOffsetDp ?: 0f).dpToPx(context)
+            drawTrendArrow(canvas, reading?.trend, x, arrowTop, parts.arrowSize, tint)
+        }
+        x = trailX
+        if (parts.delta.isNotEmpty()) {
+            canvas.drawText(parts.delta, x, baseY, secondaryPaint)
+            x += secondaryPaint.measureText(parts.delta) + dp(3f)
+        }
+        if (parts.unit.isNotEmpty()) canvas.drawText(parts.unit, x, baseY, secondaryPaint)
+    }
+
+    /**
+     * Natural width. Island mode keeps both sides equal so the gap lands dead centre; the delta
+     * offset counts as part of the right side so nudging it never pushes text past the pill.
+     */
+    private fun contentWidth(parts: FloatingParts): Float = if (isIsland(null)) {
+        val side = max(parts.leadWidth(), parts.trailWidth() + deltaOffset())
+        dp(12f) + side * 2f + islandGap(null)
+    } else {
+        val trail = if (parts.trailWidth() > 0f) {
+            (dp(2f) + parts.trailWidth() + deltaOffset()).coerceAtLeast(0f)
         } else {
             0f
         }
-        var x = bounds.left + leftPadding + islandGap / 2f
-        canvas.drawText(primary, x, baseY, valuePaint)
-        x += valuePaint.measureText(primary) + dp(1.5f)
+        dp(12f) + parts.leadWidth() + trail
+    }
+
+    private fun deltaOffset(): Float = currentSettings.deltaOffsetDp.dpToPx(context)
+
+    /** Left group (value + trend arrow), right group (delta + unit) and the text that fills them. */
+    private fun layoutParts(aod: AodSettings? = null): FloatingParts {
+        val hasValue = reading?.mgDL != null
         val showArrow = (aod?.showArrow ?: currentSettings.showArrow) &&
             hasValue &&
             TrendArrowShape.hasArrow(reading?.trend)
-        if (showArrow) {
-            val size = arrowSize() * (aod?.arrowScale ?: 1f)
-            val arrowTop = bounds.centerY() - size / 2f + (aod?.arrowVerticalOffsetDp ?: 0f).dpToPx(context)
-            drawTrendArrow(canvas, reading?.trend, x, arrowTop, size, Color.WHITE)
-            x += size + dp(2f)
+        return FloatingParts(
+            primary = primaryText(),
+            arrowSize = if (showArrow) arrowSize() * (aod?.arrowScale ?: 1f) else 0f,
+            delta = if (hasValue) deltaText(history, glucoseUnit, includeSymbol = false).orEmpty() else "",
+            unit = if (hasValue && (currentSettings.showSecondary || aod?.showSecondary == true)) {
+                glucoseUnit.label
+            } else {
+                ""
+            },
+        )
+    }
+
+    private fun FloatingParts.leadWidth(): Float =
+        valuePaint.measureText(primary) + if (arrowSize > 0f) dp(1.5f) + arrowSize else 0f
+
+    private fun FloatingParts.trailWidth(): Float {
+        var width = secondaryPaint.measureText(delta)
+        if (unit.isNotEmpty()) {
+            width += secondaryPaint.measureText(unit) + if (delta.isNotEmpty()) dp(3f) else 0f
         }
-        if (hasValue) deltaText(history, glucoseUnit, includeSymbol = false)?.let {
-            canvas.drawText(it, x, baseY, secondaryPaint)
-            x += secondaryPaint.measureText(it) + dp(3f)
-        }
-        if (hasValue && (currentSettings.showSecondary || aod?.showSecondary == true)) {
-            canvas.drawText(glucoseUnit.label, x, baseY, secondaryPaint)
-        }
+        return width
+    }
+
+    private fun isIsland(aod: AodSettings?): Boolean = aod == null && currentSettings.dynamicIsland
+
+    /**
+     * Island mode always reserves the gap, even with nothing to put on the far side: it keeps the
+     * pill width steady while the delta comes and goes, and keeps text off the camera cutout.
+     */
+    private fun islandGap(aod: AodSettings?): Float =
+        if (isIsland(aod)) currentSettings.islandGapDp.dpToPx(context) else 0f
+
+    /** Range color from the app palette (dark variant reads best on the translucent pill). */
+    private fun valueTint(): Int {
+        val mgDl = reading?.mgDL
+        if (!currentSettings.glucoseRangeColors || mgDl == null) return Color.WHITE
+        return DarkGlucoseColors.forMgDl(mgDl, targetLow, targetHigh).toArgb()
     }
 
     protected fun drawHistoryChart(
@@ -567,8 +648,8 @@ internal open class FloatingGlucoseView(
     private fun primaryText(): String =
         reading?.mgDL?.let { glucoseUnit.format(it) } ?: when (displayStatus) {
             GlucoseDisplayStatus.SENSOR_ERROR -> context.getString(R.string.sensor_error_short)
+            GlucoseDisplayStatus.OUT_OF_RANGE -> if (reading != null) "NA" else "--"
             GlucoseDisplayStatus.SENSOR_WARMUP,
-            GlucoseDisplayStatus.OUT_OF_RANGE,
             GlucoseDisplayStatus.NORMAL -> "--"
         }
 
@@ -606,7 +687,20 @@ internal open class FloatingGlucoseView(
     private fun arrowSize(): Float = (currentSettings.fontSizeSp * 0.72f).dpToPx(context)
     private fun dp(value: Float): Float = value * density
     private fun RectF.insetCopy(inset: Float): RectF = RectF(left + inset, top + inset, right - inset, bottom - inset)
+    private fun Int.withAlpha(alpha: Int): Int =
+        Color.argb(alpha, Color.red(this), Color.green(this), Color.blue(this))
+
+    private companion object {
+        const val SECONDARY_ALPHA = 178
+    }
 }
+
+private data class FloatingParts(
+    val primary: String,
+    val arrowSize: Float,
+    val delta: String,
+    val unit: String,
+)
 
 internal fun deltaText(
     history: List<GlucoseUi>,

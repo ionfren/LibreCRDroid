@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import re.abbot.librecr.app.LibreCR
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.live.WearLiveUpdatesNotifier
 
 /**
  * Complications freeze at whatever they last painted: with no newer reading nothing repaints
@@ -45,8 +46,9 @@ object StaleRepaintScheduler {
 class StaleRepaintReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         LibreCR.init(context)
+        WearLiveUpdatesNotifier.refresh(context)
         BleLog.log("COMPLICATION_STALE_REPAINT freshness boundary reached; repainting")
         val pending = goAsync()
-        LibreComplicationUpdater.requestAll(context).invokeOnCompletion { pending.finish() }
+        LibreComplicationUpdater.requestGlucose(context).invokeOnCompletion { pending.finish() }
     }
 }

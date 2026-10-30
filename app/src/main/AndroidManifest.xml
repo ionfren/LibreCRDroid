@@ -35,6 +35,13 @@
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
 
+    <queries>
+        <package android:name="me.hufman.androidautoidrive" />
+        <!-- Both car libraries declare a provider query; this addon does not use AAIdrive CDS. -->
+        <provider android:authorities="io.bimmergestalt.cardata.provider"
+            tools:node="remove" tools:selector="io.bimmergestalt.idriveconnectkit.android" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -43,6 +50,24 @@
         android:supportsRtl="true"
         android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.LibreCR">
+
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <service
+            android:name=".auto.AndroidAutoNotificationActionService"
+            android:exported="false" />
+
+        <!-- AAIdrive binds this service for the lifetime of its Connected Apps connection. -->
+        <service
+            android:name=".idrive.BmwIDriveService"
+            android:label="@string/idrive_title"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.bimmergestalt.carconnection.service" />
+            </intent-filter>
+        </service>
 
         <activity
             android:name=".MainActivity"
@@ -55,6 +80,11 @@
 
         <service
             android:name=".service.SensorForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name=".service.ReceiverRecoveryService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
@@ -79,10 +109,13 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
                 <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
                 <data android:host="*" android:pathPrefix="/librecr" android:scheme="wear" />
             </intent-filter>
         </service>
+
+        <receiver android:name=".service.ReceiverRecoveryAlarm$Receiver" android:exported="false" />
 
         <receiver
             android:name=".service.AutoConnectReceiver"
@@ -126,7 +159,7 @@
             android:showWhenLocked="true"
             android:stateNotNeeded="true"
             android:turnScreenOn="true"
-            android:theme="@style/Theme.LibreCR" />
+            android:theme="@style/Theme.LibreCR.Standby" />
 
         <receiver
             android:name=".ui.standby.StandbyPowerReceiver"
@@ -136,6 +169,40 @@
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Ordinary app widgets, also discoverable by car hosts that support mobile widgets. -->
+        <receiver
+            android:name=".widget.CompactGlucoseWidgetReceiver"
+            android:label="@string/widget_compact_name"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glucose_widget_compact" />
+        </receiver>
+        <receiver
+            android:name=".widget.WideGlucoseWidgetReceiver"
+            android:label="@string/widget_wide_name"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glucose_widget_wide" />
+        </receiver>
+        <receiver
+            android:name=".widget.GlucoseWidgetRefreshReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

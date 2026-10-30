@@ -17,6 +17,12 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://jitpack.io") {
+            content {
+                includeGroup("io.bimmergestalt")
+                includeGroupByRegex("io\\.bimmergestalt\\.idriveconnectkit.*")
+            }
+        }
     }
 }
 

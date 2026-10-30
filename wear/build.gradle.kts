@@ -30,7 +30,8 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "re.abbot.librecr.app"
-    compileSdk = 34
+    compileSdk = 37
+    useLibrary("wear-sdk", false)
 
     defaultConfig {
         applicationId = "re.abbot.librecr.app"
@@ -38,6 +39,7 @@ android {
         targetSdk = 34
         versionCode = 4
         versionName = "0.1.5"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -78,7 +80,8 @@ android {
 dependencies {
     implementation(project(":protocol"))
 
-    implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.wear:wear-ongoing:1.1.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.lifecycle:lifecycle-service:2.8.6")
     implementation("androidx.activity:activity-compose:1.9.2")
@@ -87,6 +90,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-wearable:18.2.0")
     implementation("androidx.wear.watchface:watchface-complications-data-source-ktx:1.3.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("junit:junit:4.13.2")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")
     implementation(composeBom)

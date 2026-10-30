@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Used by the full-screen red standby window so the OLED background stays off. -->
+    <color name="standby_black">#000000</color>
     <color name="ic_launcher_background">#0B496B</color>
 </resources>

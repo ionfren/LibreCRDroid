@@ -27,6 +27,8 @@ import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.app.alarm.SensorAttentionNotifier
 import re.abbot.librecr.app.alarm.StalenessWatchdog
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
+import re.abbot.librecr.app.wear.ReceiverSessionBackup
 import re.abbot.librecr.protocol.dataplane.ContiguousLifeCountTracker
 import re.abbot.librecr.protocol.dataplane.DataFrame
 import re.abbot.librecr.protocol.dataplane.DataPlaneChannel
@@ -69,7 +71,7 @@ data class GlucoseUi(
  * a sensor-error signal; patch-status attention remains the source of truth for real sensor errors.
  */
 fun GlucoseUi?.isActiveGlucoseUnavailable(nowMs: Long = System.currentTimeMillis()): Boolean =
-    this != null && !usable && isFreshGlucose(receivedAtMs, nowMs)
+    this != null && (!usable || mgDL == null) && isFreshGlucose(receivedAtMs, nowMs)
 
 private data class BackfillRequest(
     val fromLifeCount: Int,
@@ -204,6 +206,7 @@ class SensorConnectionManager(
         scope: CoroutineScope,
         session: ImportedSession,
         allowCandidateFirstPair: Boolean = false,
+        passiveConnect: Boolean = false,
     ) {
         if (loopJob?.isActive == true) {
             if (activeSession.isSameSensorAs(session)) {
@@ -220,8 +223,9 @@ class SensorConnectionManager(
         clearCurrentGlucoseState()
         lastSentReading = null
         lastSensorStatus = null
+        AutomaticSensorHandoff.onLocalSessionStarted(session.bleAddress)
         cachedReconnectFailures = 0
-        reconnectAttempt = 0
+        reconnectAttempt = if (passiveConnect) 1 else 0
         pendingReconnectReason = "initial"
         lastDisconnectStatus = null
         sensorOnline = false
@@ -252,6 +256,7 @@ class SensorConnectionManager(
     }
 
     fun stop() {
+        AutomaticSensorHandoff.onConnectionInterrupted()
         val job = loopJob
         loopJob = null
         job?.cancel()
@@ -291,6 +296,7 @@ class SensorConnectionManager(
             return
         }
         sensorOnline = false
+        AutomaticSensorHandoff.onConnectionInterrupted()
         pendingReconnectReason = reason
         lastDisconnectStatus = status
         reconnectLastGoodLifeCount = lastSentReading?.lifeCount ?: lifeCountTracker.lastContiguousLifeCount
@@ -490,8 +496,11 @@ class SensorConnectionManager(
                 reconnectSignal = disconnected
                 c.onDisconnected = { status -> requestSensorReconnect("gatt_disconnect", status) }
                 // Libre 3 accepts connections on ~minute-spaced windows → long connect timeout.
-                withReconnectWakeLock {
-                    c.connectAndDiscover(connectTimeoutMs = 120_000, discoverTimeoutMs = 45_000, autoConnect = autoConnect)
+                if (autoConnect) {
+                    // Let Android own the background wait; no repeating 120-second wake lock.
+                    c.connectAndDiscover(connectTimeoutMs = null, discoverTimeoutMs = 45_000, autoConnect = true)
+                } else withReconnectWakeLock {
+                    c.connectAndDiscover(connectTimeoutMs = 120_000, discoverTimeoutMs = 45_000, autoConnect = false)
                 }
 
                 _state.value = ConnectionState.HANDSHAKING
@@ -591,6 +600,7 @@ class SensorConnectionManager(
                 BleLog.log("manager: attempt failed: ${e.message}")
                 _statusLine.value = "error: ${e.message}"
             } finally {
+                AutomaticSensorHandoff.onConnectionInterrupted()
                 sensorOnline = false
                 reconnectSignal = null
                 conn?.close()
@@ -754,7 +764,10 @@ class SensorConnectionManager(
     private suspend fun rememberPhase5RawKey(key: ByteArray) {
         cachedPhase5RawKey = key.copyOf()
         runCatching { store.saveCachedPhase5RawKey(key) }
-            .onSuccess { BleLog.log("manager: cached Phase 5 resume key saved locally") }
+            .onSuccess {
+                BleLog.log("manager: cached Phase 5 resume key saved locally")
+                store.loadSession()?.let { ReceiverSessionBackup.publish(it, key) }
+            }
             .onFailure { BleLog.log("manager: cached Phase 5 resume key save failed: ${it.message}") }
     }
 
@@ -938,7 +951,9 @@ class SensorConnectionManager(
                         // and fire-and-forget, exactly like the stable Wear implementation.
                         WearDataSync.sendGlucose(context, reading)
                         persistChannel.trySend(reading)
+                        AutomaticSensorHandoff.onLocalReading(r.lifeCount, true)
                     } else {
+                        AutomaticSensorHandoff.onLocalReading(r.lifeCount, false)
                         WearDataSync.sendGlucoseUnavailable(
                             context,
                             WearDataSync.GlucoseUnavailable(
@@ -951,7 +966,10 @@ class SensorConnectionManager(
                         )
                     }
                 }
-            }.onFailure { BleLog.log("glucose decode failed len=${combined.size}: ${it.message}") }
+            }.onFailure {
+                AutomaticSensorHandoff.onConnectionInterrupted()
+                BleLog.log("glucose decode failed len=${combined.size}: ${it.message}")
+            }
         }
     }
 

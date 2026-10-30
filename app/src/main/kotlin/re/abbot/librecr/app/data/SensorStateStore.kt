@@ -69,7 +69,14 @@ class SensorStateStore(
     data class SensorLifecycleSnapshot(
         val lifeCountMinutes: Int,
         val observedAtMs: Long,
-    )
+    ) {
+        /** Sensor age at [nowMs]: the last observed lifeCount plus wall time since it was seen. */
+        fun elapsedMinutesAt(nowMs: Long): Int {
+            val observedAt = observedAtMs.takeIf { it > 0L } ?: return lifeCountMinutes
+            val extraMinutes = ((nowMs - observedAt).coerceAtLeast(0L) / 60_000L).toInt()
+            return (lifeCountMinutes + extraMinutes).coerceAtLeast(0)
+        }
+    }
 
     data class SensorWarmupSnapshot(
         val startedAtMs: Long,

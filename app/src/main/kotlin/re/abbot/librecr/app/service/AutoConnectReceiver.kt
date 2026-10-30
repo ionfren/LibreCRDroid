@@ -25,6 +25,9 @@ class AutoConnectReceiver : BroadcastReceiver() {
                 LibreCR.init(context)
                 val session = LibreCR.store.loadSession()
                 val autoConnect = LibreCR.store.autoConnectEnabled()
+                if (session != null) {
+                    ReceiverRecoveryService.ensure(context, re.abbot.librecr.app.wear.AutomaticSensorHandoff.monitoringRequired)
+                }
                 if (session == null || !autoConnect) {
                     BleLog.log("receiver: auto-connect skipped action=$action session=${session != null} enabled=$autoConnect")
                     return@launch

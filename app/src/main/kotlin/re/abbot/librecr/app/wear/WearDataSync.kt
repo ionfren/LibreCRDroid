@@ -19,6 +19,7 @@ import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceSettings
 import re.abbot.librecr.app.log.BleLog
 import re.abbot.librecr.protocol.dataplane.GlucoseTimeline
+import re.abbot.librecr.protocol.connection.AutomaticHandoff
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -152,6 +153,7 @@ object WearDataSync {
 
     fun sendGlucose(context: Context, reading: SensorStateStore.LastGlucose) {
         val json = JSONObject().apply {
+            put("bleAddress", AutomaticSensorHandoff.localSensorAddress)
             put("lifeCount", reading.lifeCount)
             put("mgDL", reading.mgDL)
             put("trend", reading.trend)
@@ -166,6 +168,7 @@ object WearDataSync {
 
     fun sendGlucoseUnavailable(context: Context, event: GlucoseUnavailable) {
         val payload = JSONObject()
+            .put("bleAddress", AutomaticSensorHandoff.localSensorAddress)
             .put("lifeCount", event.lifeCount)
             .put("trend", event.trend)
             .put("receivedAtMs", event.receivedAtMs)
@@ -253,6 +256,17 @@ object WearDataSync {
         val payload = byteArrayOf(if (enabled) 1 else 0)
         putDataItem(context, PATH_DIAGNOSTIC_LOGGING, payload)
         sendToNearbyNodes(context, PATH_DIAGNOSTIC_LOGGING, payload)
+    }
+
+    @Synchronized
+    fun sendAutomaticHandoffSettings(context: Context, enabled: Boolean, selectedWatchId: String) {
+        val prefs = context.applicationContext.getSharedPreferences("librecr_automatic_handoff", Context.MODE_PRIVATE)
+        val revision = maxOf(System.currentTimeMillis(), prefs.getLong("settingsRevision", 0) + 1)
+        prefs.edit().putLong("settingsRevision", revision).commit()
+        val payload = JSONObject().put("enabled", enabled).put("selectedWatchId", selectedWatchId)
+            .put("syncedAtMs", revision).toString().toByteArray(Charsets.UTF_8)
+        putDataItem(context, AutomaticHandoff.SETTINGS, payload)
+        sendToNearbyNodes(context, AutomaticHandoff.SETTINGS, payload)
     }
 
     fun parseLog(bytes: ByteArray): List<String> =

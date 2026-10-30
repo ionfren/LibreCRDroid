@@ -10,8 +10,11 @@ import re.abbot.librecr.app.ble.SensorConnectionManager
 import re.abbot.librecr.app.data.SensorStateStore
 import re.abbot.librecr.app.data.WearAppearanceStore
 import re.abbot.librecr.app.log.BleLog
+import re.abbot.librecr.app.live.WearLiveUpdatesNotifier
 import re.abbot.librecr.app.log.DiagnosticLogSettings
 import re.abbot.librecr.app.wear.WearDataSync
+import re.abbot.librecr.app.wear.AutomaticSensorHandoff
+import re.abbot.librecr.app.wear.ReceiverSessionBackup
 import re.abbot.librecr.app.wear.complication.LibreComplicationUpdater
 
 /**
@@ -38,6 +41,9 @@ object LibreCR {
         manager = SensorConnectionManager(app, store)
         appearance = WearAppearanceStore(app)
         WearDataSync.initializePeerState(app)
+        AutomaticSensorHandoff.initialize(app)
+        ReceiverSessionBackup.initialize(app)
+        WearLiveUpdatesNotifier.initialize(app, scope)
         // Seed patch status off the live path. A delayed DataStore read cannot delay BLE startup,
         // UI, phone relay or complication requests, and cannot overwrite a newer live snapshot.
         scope.launch {
